@@ -10,19 +10,20 @@ FROM golang:1.25 AS etcd
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags '-s -w -extldflags "-static"' -o /usr/local/bin/etcd ./cmd/etcd
 
-FROM alpine AS smoke
+FROM scratch AS smoke
 COPY --from=etcd /usr/local/bin/etcd /bin/etcd
 COPY --from=etcdctl /usr/local/bin/etcdctl /bin/etcdctl
 COPY --from=kube-apiserver /usr/local/bin/kube-apiserver /bin/kube-apiserver
 COPY --from=kube-controller-manager /usr/local/bin/kube-controller-manager /bin/kube-controller-manager
 COPY --from=kube-scheduler /usr/local/bin/kube-scheduler /bin/kube-scheduler
 COPY --from=kubectl /bin/kubectl /bin/kubectl
-RUN etcd version
-RUN etcdctl version
-RUN kube-apiserver --version
-RUN kube-controller-manager --version
-RUN kube-scheduler --version
-RUN kubectl version --client
+
+RUN ["/bin/etcd", "version"]
+RUN ["/bin/etcdctl", "version"]
+RUN ["/bin/kube-apiserver", "--version"]
+RUN ["/bin/kube-controller-manager", "--version"]
+RUN ["/bin/kube-scheduler", "--version"]
+RUN ["/bin/kubectl", "version", "--client"]
 
 FROM scratch
 COPY --from=smoke /bin/etcdctl /bin/etcdctl
