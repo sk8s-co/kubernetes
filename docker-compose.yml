@@ -1,0 +1,8 @@
+services:
+  kubernetes:
+    build: .
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "8080:8080"

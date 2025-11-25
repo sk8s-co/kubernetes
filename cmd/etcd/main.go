@@ -6,7 +6,9 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	apiversion "go.etcd.io/etcd/api/v3/version"
@@ -15,6 +17,9 @@ import (
 )
 
 func main() {
+	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	if len(os.Args) > 1 && os.Args[1] == "version" {
 		fmt.Println(apiversion.Version)
 		return
@@ -67,15 +72,23 @@ func main() {
 	defer cli.Close()
 
 	// --- Use it like normal etcd ---
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(rootCtx, 5*time.Second)
 	defer cancel()
 
-	_, err = cli.Put(ctx, "started-at", time.Now().UTC().Format(time.RFC3339))
+	_, err = cli.Put(reqCtx, "started-at", time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		log.Fatalf("put started-at failed: %v", err)
 	}
 
-	log.Println("ready; data dir:", mustAbs(cfg.Dir))
+	log.Println("embedded etcd running; data dir:", mustAbs(cfg.Dir))
+	log.Println("waiting for SIGINT/SIGTERM to stop")
+
+	select {
+	case <-rootCtx.Done():
+		log.Println("shutdown signal received; stopping etcd")
+	case <-e.Server.StopNotify():
+		log.Println("embedded etcd stopped")
+	}
 }
 
 func mustAbs(p string) string {
