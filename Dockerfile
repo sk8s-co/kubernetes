@@ -78,7 +78,7 @@ COPY --from=certs sk8s.pub sk8s.pub
 COPY --from=kubeconfig kubeconfig kubeconfig
 
 ENV KUBECONFIG=/var/task/kubeconfig
-RUN apk add --no-cache curl net-tools
+RUN apk add --no-cache bash
 
 COPY Procfile Procfile
 ENTRYPOINT [ "procfiled" ]
