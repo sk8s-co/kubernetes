@@ -14,6 +14,7 @@ import (
 	apiversion "go.etcd.io/etcd/api/v3/version"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/embed"
+	"go.etcd.io/etcd/server/v3/storage/wal"
 )
 
 func main() {
@@ -29,9 +30,9 @@ func main() {
 	cfg := embed.NewConfig()
 	cfg.Logger = "zap"
 	cfg.LogLevel = "warn"
-	cfg.Dir = "/tmp/etcd"
+	cfg.Dir, _ = os.MkdirTemp("", "etcd")
 	cfg.UnsafeNoFsync = true
-	cfg.QuotaBackendBytes = 64 * 1024 * 1024
+	wal.SegmentSizeBytes = 8 * 1024 * 1024
 
 	// single-node defaults
 	lpurl := mustParseURL("http://127.0.0.1:2380", "peer")
@@ -99,6 +100,12 @@ func mustAbs(p string) string {
 		return p
 	}
 	return abs
+}
+
+func mustMkdir(p string) {
+	if err := os.MkdirAll(p, 0o700); err != nil {
+		log.Fatalf("failed to create directory %s: %v", p, err)
+	}
 }
 
 func mustParseURL(raw, label string) *url.URL {

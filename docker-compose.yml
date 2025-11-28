@@ -2,7 +2,16 @@ services:
   kubernetes:
     build: .
     read_only: true
-    tmpfs:
-      - /tmp
+    volumes:
+      # Use a dedicated tmpfs-backed volume to emulate Lambda /tmp (~525MB, 0700)
+      - lambda-tmp:/tmp
     ports:
       - "8020:8020"
+
+volumes:
+  lambda-tmp:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=525m,mode=700"
