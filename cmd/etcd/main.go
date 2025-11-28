@@ -32,7 +32,7 @@ func main() {
 	cfg.LogLevel = "warn"
 	cfg.Dir, _ = os.MkdirTemp("", "etcd")
 	cfg.UnsafeNoFsync = true
-	wal.SegmentSizeBytes = 8 * 1024 * 1024
+	wal.SegmentSizeBytes = 0
 
 	// single-node defaults
 	lpurl := mustParseURL("http://127.0.0.1:2380", "peer")
