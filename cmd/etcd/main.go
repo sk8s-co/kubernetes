@@ -27,7 +27,7 @@ func main() {
 
 	// --- Etcd embedded config ---
 	cfg := embed.NewConfig()
-	cfg.Dir = "/tmp/etcd-data"
+	cfg.Dir = "/tmp"
 	cfg.Logger = "zap"    // modern logger
 	cfg.LogLevel = "warn" // keep it quiet
 
