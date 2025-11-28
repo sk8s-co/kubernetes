@@ -11,7 +11,6 @@ FROM registry.k8s.io/kubectl:${KUBE_VERSION} AS kubectl
 FROM kubernetesui/dashboard-auth:${DASHBOARD_AUTH_VERSION} AS dashboard-auth
 FROM kubernetesui/dashboard-web:${DASHBOARD_WEB_VERSION} AS dashboard-web
 FROM kubernetesui/dashboard-api:${DASHBOARD_API_VERSION} AS dashboard-api
-
 FROM ghcr.io/scaffoldly/procfiled:beta AS procfiled
 
 FROM golang:1.25 AS etcd
@@ -57,6 +56,7 @@ RUN ["kubectl", "config", "use-context", "sk8s", "--kubeconfig=kubeconfig"]
 
 FROM alpine
 WORKDIR /var/task
+RUN apk add --no-cache bash
 
 COPY --from=smoke /bin/etcdctl /bin/etcdctl
 COPY --from=smoke /bin/etcd /bin/etcd
@@ -78,7 +78,6 @@ COPY --from=certs sk8s.pub sk8s.pub
 COPY --from=kubeconfig kubeconfig kubeconfig
 
 ENV KUBECONFIG=/var/task/kubeconfig
-RUN apk add --no-cache bash
 
 COPY Procfile Procfile
 ENTRYPOINT [ "procfiled" ]
