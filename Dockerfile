@@ -19,23 +19,6 @@ COPY go.mod ./go.mod
 COPY go.sum ./go.sum
 RUN CGO_ENABLED=0 go build -trimpath -ldflags '-s -w -extldflags "-static"' -o /usr/local/bin/etcd ./cmd/etcd
 
-FROM alpine AS smoke
-COPY --from=etcd /usr/local/bin/etcd /bin/etcd
-COPY --from=etcdctl /usr/local/bin/etcdctl /bin/etcdctl
-COPY --from=kube-apiserver /usr/local/bin/kube-apiserver /bin/kube-apiserver
-COPY --from=kube-controller-manager /usr/local/bin/kube-controller-manager /bin/kube-controller-manager
-COPY --from=kube-scheduler /usr/local/bin/kube-scheduler /bin/kube-scheduler
-COPY --from=kubectl /bin/kubectl /bin/kubectl
-COPY --from=procfiled /usr/local/bin/procfiled /bin/procfiled
-
-RUN ["/bin/etcd", "version"]
-RUN ["/bin/etcdctl", "version"]
-RUN ["/bin/kube-apiserver", "--version"]
-RUN ["/bin/kube-controller-manager", "--version"]
-RUN ["/bin/kube-scheduler", "--version"]
-RUN ["/bin/kubectl", "version", "--client"]
-RUN ["/bin/procfiled", "--version"]
-
 FROM alpine/openssl AS certs
 RUN openssl req -x509 -newkey rsa:2048 -nodes \
     -keyout sk8s.key \
@@ -54,31 +37,43 @@ RUN ["kubectl", "config", "set-credentials", "sk8s", "--client-certificate=sk8s.
 RUN ["kubectl", "config", "set-context", "sk8s", "--cluster=sk8s", "--user=sk8s", "--kubeconfig=kubeconfig"]
 RUN ["kubectl", "config", "use-context", "sk8s", "--kubeconfig=kubeconfig"]
 
+FROM alpine AS smoke
+WORKDIR /sk8s
+COPY --from=etcd /usr/local/bin/etcd etcd
+COPY --from=etcdctl /usr/local/bin/etcdctl etcdctl
+COPY --from=kube-apiserver /usr/local/bin/kube-apiserver kube-apiserver
+COPY --from=kube-controller-manager /usr/local/bin/kube-controller-manager kube-controller-manager
+COPY --from=kube-scheduler /usr/local/bin/kube-scheduler kube-scheduler
+COPY --from=kubectl /bin/kubectl kubectl
+COPY --from=procfiled /usr/local/bin/procfiled procfiled
+COPY --from=dashboard-auth /dashboard-auth dashboard-auth
+COPY --from=dashboard-api /dashboard-api dashboard-api
+COPY --from=dashboard-web /dashboard-web dashboard-web
+COPY --from=dashboard-web /locale_conf.json locale_conf.json
+COPY --from=dashboard-web /public public
+COPY --from=certs sk8s.key sk8s.key
+COPY --from=certs sk8s.crt sk8s.crt
+COPY --from=certs sk8s.pub sk8s.pub
+COPY --from=kubeconfig --chmod=644 kubeconfig kubeconfig
+COPY Procfile Procfile
+
+RUN ["/sk8s/etcd", "version"]
+RUN ["/sk8s/etcdctl", "version"]
+RUN ["/sk8s/kube-apiserver", "--version"]
+RUN ["/sk8s/kube-controller-manager", "--version"]
+RUN ["/sk8s/kube-scheduler", "--version"]
+RUN ["/sk8s/kubectl", "version", "--client"]
+RUN ["/sk8s/procfiled", "--version"]
+
 FROM alpine
-WORKDIR /var/task
+
 RUN apk add --no-cache bash
 
-COPY --from=smoke /bin/etcdctl /bin/etcdctl
-COPY --from=smoke /bin/etcd /bin/etcd
-COPY --from=smoke /bin/kube-apiserver /bin/kube-apiserver
-COPY --from=smoke /bin/kube-controller-manager /bin/kube-controller-manager
-COPY --from=smoke /bin/kube-scheduler /bin/kube-scheduler
-COPY --from=smoke /bin/kubectl /bin/kubectl
-COPY --from=smoke /bin/procfiled /bin/procfiled
+WORKDIR /sk8s
+ENV PATH="/sk8s:${PATH}" \
+    KUBECONFIG="/sk8s/kubeconfig"
 
-COPY --from=dashboard-auth /dashboard-auth /usr/local/bin/dashboard-auth
-COPY --from=dashboard-api /dashboard-api /usr/local/bin/dashboard-api
-COPY --from=dashboard-web /dashboard-web /usr/local/bin/dashboard-web
-COPY --from=dashboard-web /locale_conf.json /usr/local/bin/locale_conf.json
-COPY --from=dashboard-web /public /usr/local/bin/public
+COPY --from=smoke /sk8s /sk8s
 
-COPY --from=certs sk8s.crt sk8s.crt
-COPY --from=certs sk8s.key sk8s.key
-COPY --from=certs sk8s.pub sk8s.pub
-COPY --from=kubeconfig kubeconfig kubeconfig
-
-ENV KUBECONFIG=/var/task/kubeconfig
-
-COPY Procfile Procfile
 ENTRYPOINT [ "procfiled" ]
-CMD [ "start", "-j", "/var/task/Procfile" ]
+CMD [ "start", "-j", "/sk8s/Procfile" ]

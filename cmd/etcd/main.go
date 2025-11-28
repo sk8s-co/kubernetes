@@ -27,9 +27,11 @@ func main() {
 
 	// --- Etcd embedded config ---
 	cfg := embed.NewConfig()
-	cfg.Dir = "/tmp"
-	cfg.Logger = "zap"    // modern logger
-	cfg.LogLevel = "warn" // keep it quiet
+	cfg.Logger = "zap"
+	cfg.LogLevel = "warn"
+	cfg.Dir = "/tmp/etcd"
+	cfg.UnsafeNoFsync = true
+	cfg.QuotaBackendBytes = 64 * 1024 * 1024
 
 	// single-node defaults
 	lpurl := mustParseURL("http://127.0.0.1:2380", "peer")
