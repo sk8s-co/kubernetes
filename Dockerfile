@@ -12,6 +12,7 @@ FROM registry.k8s.io/kubectl:${KUBERNETES_VERSION} AS kubectl
 FROM kubernetesui/dashboard-auth:${DASHBOARD_AUTH_VERSION} AS dashboard-auth
 FROM kubernetesui/dashboard-web:${DASHBOARD_WEB_VERSION} AS dashboard-web
 FROM kubernetesui/dashboard-api:${DASHBOARD_API_VERSION} AS dashboard-api
+FROM ghcr.io/scaffoldly/procfiled:beta AS procfiled
 
 FROM golang:1.25 AS etcd
 COPY cmd ./cmd
@@ -32,6 +33,8 @@ COPY --from=dashboard-api /dashboard-api /kubernetes/dashboard-api
 COPY --from=dashboard-web /dashboard-web /kubernetes/dashboard-web
 COPY --from=dashboard-web /locale_conf.json /kubernetes/locale_conf.json
 COPY --from=dashboard-web /public /kubernetes/public
+COPY --from=procfiled /usr/local/bin/procfiled /kubernetes/procfiled
+COPY Procfile /kubernetes/Procfile
 
 RUN ["/kubernetes/etcd", "version"]
 RUN ["/kubernetes/etcdctl", "version"]
@@ -42,3 +45,6 @@ RUN ["/kubernetes/kubectl", "version", "--client"]
 
 FROM alpine
 COPY --from=smoke /kubernetes /kubernetes
+WORKDIR /kubernetes
+ENTRYPOINT ["/kubernetes/procfiled"]
+CMD ["start", "-j", "/kubernetes/Procfile"]

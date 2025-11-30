@@ -3,13 +3,10 @@ services:
     build: .
     read_only: true
     volumes:
-      # Use a dedicated tmpfs-backed volume to emulate Lambda /tmp (~525MB, 0700)
-      - lambda-tmp:/tmp
-    ports:
-      - "8020:8020"
+      - tmp:/tmp
 
 volumes:
-  lambda-tmp:
+  tmp:
     driver: local
     driver_opts:
       type: tmpfs
