@@ -9,6 +9,9 @@ on:
 
 jobs:
   build-and-push:
+    strategy:
+      matrix:
+        kube-version: [v1.34]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -38,9 +41,8 @@ jobs:
           images: |
             ghcr.io/${{ github.repository }}
           tags: |
-            type=ref,event=pr
-            type=raw,value=beta,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha
+            type=raw,value=${{ matrix.kube-version }},enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=${{ matrix.kube-version }}-
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -50,6 +52,8 @@ jobs:
             linux/amd64
             linux/arm64
           pull: true
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
+          args: |
+            KUBE_VERSION=${{ matrix.kube_version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
