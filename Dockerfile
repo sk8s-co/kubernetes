@@ -51,9 +51,9 @@ COPY --from=dashboard-api /dashboard-api dashboard-api
 COPY --from=dashboard-web /dashboard-web dashboard-web
 COPY --from=dashboard-web /locale_conf.json locale_conf.json
 COPY --from=dashboard-web /public public
-COPY --from=certs sk8s.key sk8s.key
-COPY --from=certs sk8s.crt sk8s.crt
-COPY --from=certs sk8s.pub sk8s.pub
+COPY --from=certs --chmod=644 sk8s.key sk8s.key
+COPY --from=certs --chmod=644 sk8s.crt sk8s.crt
+COPY --from=certs --chmod=644 sk8s.pub sk8s.pub
 COPY --from=kubeconfig --chmod=644 kubeconfig kubeconfig
 COPY Procfile Procfile
 
