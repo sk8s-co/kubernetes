@@ -102,12 +102,6 @@ func mustAbs(p string) string {
 	return abs
 }
 
-func mustMkdir(p string) {
-	if err := os.MkdirAll(p, 0o700); err != nil {
-		log.Fatalf("failed to create directory %s: %v", p, err)
-	}
-}
-
 func mustParseURL(raw, label string) *url.URL {
 	u, err := url.Parse(raw)
 	if err != nil {
