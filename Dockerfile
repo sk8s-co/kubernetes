@@ -24,6 +24,7 @@ COPY --from=kube-apiserver /usr/local/bin/kube-apiserver /kubernetes/kube-apiser
 COPY --from=kube-controller-manager /usr/local/bin/kube-controller-manager /kubernetes/kube-controller-manager
 COPY --from=kube-scheduler /usr/local/bin/kube-scheduler /kubernetes/kube-scheduler
 COPY --from=kubectl /bin/kubectl /kubernetes/kubectl
+COPY --from=dashboard-api /dashboard-api /kubernetes/dashboard-api
 COPY --from=dashboard-web /dashboard-web /kubernetes/dashboard-web
 COPY --from=dashboard-web /locale_conf.json /kubernetes/locale_conf.json
 COPY --from=dashboard-web /public /kubernetes/public
