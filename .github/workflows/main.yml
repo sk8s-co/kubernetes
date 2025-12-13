@@ -53,7 +53,7 @@ jobs:
             linux/arm64
           pull: true
           push: ${{ github.ref == 'refs/heads/main' }}
-          args: |
+          build-args: |
             KUBE_VERSION=${{ matrix.kube_version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
