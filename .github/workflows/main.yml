@@ -54,6 +54,6 @@ jobs:
           pull: true
           push: ${{ github.ref == 'refs/heads/main' }}
           build-args: |
-            KUBE_VERSION=${{ matrix.kube_version }}
+            KUBE_VERSION=${{ matrix.kube-version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
