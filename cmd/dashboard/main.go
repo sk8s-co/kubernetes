@@ -15,6 +15,7 @@ import (
 	"k8s.io/dashboard/web/pkg/router"
 
 	// Importing route packages forces route registration
+	_ "github.com/sk8s-co/kubernetes/pkg/dashboard/token"
 	_ "k8s.io/dashboard/web/pkg/config"
 	_ "k8s.io/dashboard/web/pkg/locale"
 	_ "k8s.io/dashboard/web/pkg/settings"
