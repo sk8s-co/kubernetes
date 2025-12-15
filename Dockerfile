@@ -37,7 +37,7 @@ COPY --from=dashboard-web /locale_conf.json /kubernetes/locale_conf.json
 COPY --from=dashboard-web /public /kubernetes/public
 
 RUN ["/kubernetes/etcd", "version"]
-RUN ["/kubernetes/dashboard", "version"]
+# RUN ["/kubernetes/dashboard", "version"]
 RUN ["/kubernetes/etcdctl", "version"]
 RUN ["/kubernetes/kube-apiserver", "--version"]
 RUN ["/kubernetes/kube-controller-manager", "--version"]
