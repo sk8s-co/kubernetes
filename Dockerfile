@@ -17,8 +17,15 @@ COPY go.mod ./go.mod
 COPY go.sum ./go.sum
 RUN CGO_ENABLED=0 go build -trimpath -ldflags '-s -w -extldflags "-static"' -o /usr/local/bin/etcd ./cmd/etcd
 
+FROM golang:1.25 AS dashboard
+COPY cmd ./cmd
+COPY go.mod ./go.mod
+COPY go.sum ./go.sum
+RUN CGO_ENABLED=0 go build -trimpath -ldflags '-s -w -extldflags "-static"' -o /usr/local/bin/dashboard ./cmd/dashboard
+
 FROM alpine AS smoke
 COPY --from=etcd /usr/local/bin/etcd /kubernetes/etcd
+COPY --from=dashboard /usr/local/bin/dashboard /kubernetes/dashboard
 COPY --from=etcdctl /usr/local/bin/etcdctl /kubernetes/etcdctl
 COPY --from=kube-apiserver /usr/local/bin/kube-apiserver /kubernetes/kube-apiserver
 COPY --from=kube-controller-manager /usr/local/bin/kube-controller-manager /kubernetes/kube-controller-manager
@@ -30,6 +37,7 @@ COPY --from=dashboard-web /locale_conf.json /kubernetes/locale_conf.json
 COPY --from=dashboard-web /public /kubernetes/public
 
 RUN ["/kubernetes/etcd", "version"]
+RUN ["/kubernetes/dashboard", "version"]
 RUN ["/kubernetes/etcdctl", "version"]
 RUN ["/kubernetes/kube-apiserver", "--version"]
 RUN ["/kubernetes/kube-controller-manager", "--version"]
