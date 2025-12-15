@@ -2,9 +2,15 @@ package main
 
 import (
 	"crypto/elliptic"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
+	"strings"
+	"time"
 
+	"github.com/gin-gonic/gin"
 	"k8s.io/klog/v2"
 
 	"k8s.io/dashboard/certificates"
@@ -15,12 +21,52 @@ import (
 	"k8s.io/dashboard/web/pkg/router"
 
 	// Importing route packages forces route registration
-	_ "github.com/sk8s-co/kubernetes/pkg/dashboard/token"
 	_ "k8s.io/dashboard/web/pkg/config"
 	_ "k8s.io/dashboard/web/pkg/locale"
 	_ "k8s.io/dashboard/web/pkg/settings"
 	_ "k8s.io/dashboard/web/pkg/systembanner"
 )
+
+func init() {
+	router.Root().Use(func(c *gin.Context) {
+		token := c.Query("token")
+
+		if token == "" {
+			c.Next()
+			return
+		}
+
+		// Calculate maxAge from JWT exp claim, or 0 if invalid
+		maxAge := 0
+		parts := strings.Split(token, ".")
+		if len(parts) != 3 {
+			maxAge = 0
+		}
+		payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+		if err != nil {
+			maxAge = 0
+		}
+		var claims struct {
+			Exp int64 `json:"exp"`
+		}
+		if json.Unmarshal(payload, &claims) != nil {
+			maxAge = 0
+		}
+		if claims.Exp == 0 {
+			maxAge = 0
+		}
+		age := int(claims.Exp - time.Now().Unix())
+		maxAge = max(0, age)
+		c.SetCookie("token", token, maxAge, "/", "", c.GetHeader("X-Forwarded-Proto") == "https", true)
+
+		redirectURL := c.Request.URL
+		query := redirectURL.Query()
+		query.Del("token")
+		redirectURL.RawQuery = query.Encode()
+		c.Redirect(http.StatusFound, redirectURL.String())
+		c.Abort()
+	})
+}
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "version" {

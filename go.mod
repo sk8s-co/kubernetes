@@ -3,6 +3,7 @@ module github.com/sk8s-co/kubernetes
 go 1.25.4
 
 require (
+	github.com/gin-gonic/gin v1.10.0
 	go.etcd.io/etcd/api/v3 v3.6.6
 	go.etcd.io/etcd/client/v3 v3.6.6
 	go.etcd.io/etcd/server/v3 v3.6.6
@@ -31,7 +32,6 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/sse v1.0.0 // indirect
 	github.com/gin-gonic/contrib v0.0.0-20241229022435-d12709533de6 // indirect
-	github.com/gin-gonic/gin v1.10.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
