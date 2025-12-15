@@ -15,13 +15,13 @@ FROM golang:1.25 AS etcd
 COPY cmd ./cmd
 COPY go.mod ./go.mod
 COPY go.sum ./go.sum
-RUN CGO_ENABLED=0 go build -trimpath -ldflags '-s -w -extldflags "-static"' -o /usr/local/bin/etcd ./cmd/etcd
+RUN CGO_ENABLED=0 go build -trimpath -ldflags '-s -w' -o /usr/local/bin/etcd ./cmd/etcd
 
 FROM golang:1.25 AS dashboard
 COPY cmd ./cmd
 COPY go.mod ./go.mod
 COPY go.sum ./go.sum
-RUN CGO_ENABLED=0 go build -trimpath -ldflags '-s -w -extldflags "-static"' -o /usr/local/bin/dashboard ./cmd/dashboard
+RUN CGO_ENABLED=0 go build -trimpath -ldflags '-s -w' -o /usr/local/bin/dashboard ./cmd/dashboard
 
 FROM alpine AS smoke
 COPY --from=etcd /usr/local/bin/etcd /kubernetes/etcd
