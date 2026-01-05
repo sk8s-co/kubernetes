@@ -1,12 +1,31 @@
-ARG KUBE_VERSION=v1.34
-ARG ETCD_VERSION=v3.6.6
-ARG KUBERNETES_VERSION=${KUBE_VERSION}.0
+ARG KUBE_VERSION=1.34
+ARG KUBE_VERSION_PATCH=0
+ARG KUBE_VERSION_GO=1.24
+ARG ETCD_VERSION=3.6.6
 
-FROM quay.io/coreos/etcd:${ETCD_VERSION} AS etcd
-FROM registry.k8s.io/kube-apiserver:${KUBERNETES_VERSION} AS kube-apiserver
-FROM registry.k8s.io/kube-controller-manager:${KUBERNETES_VERSION} AS kube-controller-manager
-FROM registry.k8s.io/kube-scheduler:${KUBERNETES_VERSION} AS kube-scheduler
-FROM registry.k8s.io/kubectl:${KUBERNETES_VERSION} AS kubectl
+FROM quay.io/coreos/etcd:v${ETCD_VERSION} AS etcd
+FROM registry.k8s.io/kube-apiserver:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kube-apiserver
+FROM registry.k8s.io/kube-controller-manager:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kube-controller-manager
+FROM registry.k8s.io/kube-scheduler:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kube-scheduler
+FROM registry.k8s.io/kubectl:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kubectl
+
+FROM golang:${KUBE_VERSION_GO}-alpine AS builder
+ARG KUBE_VERSION_GO \
+    KUBE_VERSION \
+    KUBE_VERSION_PATCH
+ENV KUBE_VERSION_GO=${KUBE_VERSION_GO} \
+    KUBE_VERSION=${KUBE_VERSION} \
+    KUBE_VERSION_PATCH=${KUBE_VERSION_PATCH}
+RUN apk add --no-cache git make bash
+RUN git clone https://github.com/kubernetes/kubernetes.git -b v${KUBE_VERSION}.${KUBE_VERSION_PATCH} --depth=1 /kubernetes
+WORKDIR /kubernetes
+
+FROM builder AS kubelet
+ARG KUBE_VERSION_GO
+ENV KUBE_VERSION_GO=${KUBE_VERSION_GO}
+RUN --mount=type=cache,id=go-${KUBE_VERSION_GO},target=/go \
+    CGO_ENABLED=0 make all WHAT=cmd/kubelet KUBE_STATIC_OVERRIDES=kubelet && \
+    mv /kubernetes/_output/local/go/bin/kubelet /usr/local/bin/kubelet
 
 FROM alpine AS smoke
 COPY --from=etcd /usr/local/bin/etcd /kubernetes/etcd
@@ -15,6 +34,7 @@ COPY --from=kube-apiserver /usr/local/bin/kube-apiserver /kubernetes/kube-apiser
 COPY --from=kube-controller-manager /usr/local/bin/kube-controller-manager /kubernetes/kube-controller-manager
 COPY --from=kube-scheduler /usr/local/bin/kube-scheduler /kubernetes/kube-scheduler
 COPY --from=kubectl /bin/kubectl /kubernetes/kubectl
+COPY --from=kubelet /usr/local/bin/kubelet /kubernetes/kubelet
 
 RUN ["/kubernetes/etcd", "--version"]
 RUN ["/kubernetes/etcdctl", "version"]
@@ -22,6 +42,7 @@ RUN ["/kubernetes/kube-apiserver", "--version"]
 RUN ["/kubernetes/kube-controller-manager", "--version"]
 RUN ["/kubernetes/kube-scheduler", "--version"]
 RUN ["/kubernetes/kubectl", "version", "--client"]
+RUN ["/kubernetes/kubelet", "--version"]
 
-FROM alpine
+FROM scratch
 COPY --from=smoke /kubernetes /kubernetes
