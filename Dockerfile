@@ -21,9 +21,9 @@ RUN git clone https://github.com/kubernetes/kubernetes.git -b v${KUBE_VERSION}.$
 WORKDIR /kubernetes
 
 FROM builder AS kubelet
-ARG KUBE_VERSION_GO
-ENV KUBE_VERSION_GO=${KUBE_VERSION_GO}
-RUN --mount=type=cache,id=go-${KUBE_VERSION_GO},target=/go \
+ARG KUBE_VERSION
+ENV KUBE_VERSION=${KUBE_VERSION}
+RUN --mount=type=cache,id=go-${KUBE_VERSION},target=/go \
     CGO_ENABLED=0 make all WHAT=cmd/kubelet KUBE_STATIC_OVERRIDES=kubelet && \
     mv /kubernetes/_output/local/go/bin/kubelet /usr/local/bin/kubelet
 
@@ -45,4 +45,4 @@ RUN ["/kubernetes/kubectl", "version", "--client"]
 RUN ["/kubernetes/kubelet", "--version"]
 
 FROM scratch
-COPY --from=smoke /kubernetes /kubernetes
+COPY --from=smoke /kubernetes/* /
