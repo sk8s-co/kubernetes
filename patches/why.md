@@ -1,6 +1,8 @@
-# Patches for Kubernetes 1.34
+# Patches
 
-## [etag-cache-control.patch](etag-cache-control.patch)
+## etag-cache-control.patch
+
+**Versions:** 1.34, 1.35
 
 **Changes:**
 - Sets `Cache-Control` header from `public` to `no-cache, private`

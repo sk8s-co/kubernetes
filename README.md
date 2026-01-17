@@ -14,10 +14,7 @@ Minimal bundle of Kubernetes control plane binaries, with patches for serverless
 
 ## Patches
 
-The `kubelet` binary is built from source with patches applied for serverless compatibility. See [`patches/`](patches/) for details.
-
-Current patches:
-- **etag-cache-control** - Disables caching on discovery endpoints to fix `kubectl` errors in serverless environments
+The `kubelet` binary is built from source with patches applied for serverless compatibility. See [`patches/why.md`](patches/why.md) for details.
 
 ## Versions
 
