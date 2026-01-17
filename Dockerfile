@@ -20,6 +20,15 @@ RUN apk add --no-cache git make bash
 RUN git clone https://github.com/kubernetes/kubernetes.git -b v${KUBE_VERSION}.${KUBE_VERSION_PATCH} --depth=1 /kubernetes
 WORKDIR /kubernetes
 
+COPY patches/${KUBE_VERSION}/*.patch /patches/
+RUN set -e && for patch in /patches/*.patch; do \
+    echo "Applying patch: $patch" && \
+    git apply --verbose --check "$patch" && \
+    git apply --verbose "$patch"; \
+    done && \
+    echo "=== Applied patches ===" && \
+    git diff HEAD
+
 FROM builder AS kubelet
 ARG KUBE_VERSION
 ENV KUBE_VERSION=${KUBE_VERSION}
