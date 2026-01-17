@@ -1,0 +1,24 @@
+diff --git a/staging/src/k8s.io/apiserver/pkg/endpoints/discovery/aggregated/etag.go b/staging/src/k8s.io/apiserver/pkg/endpoints/discovery/aggregated/etag.go
+index 09f8a616..03c838a0 100644
+--- a/staging/src/k8s.io/apiserver/pkg/endpoints/discovery/aggregated/etag.go
++++ b/staging/src/k8s.io/apiserver/pkg/endpoints/discovery/aggregated/etag.go
+@@ -50,18 +50,7 @@ func ServeHTTPWithETag(
+ 	quotedHash := strconv.Quote(hash)
+ 	w.Header().Set("ETag", quotedHash)
+ 	w.Header().Set("Vary", "Accept")
+-	w.Header().Set("Cache-Control", "public")
+-
+-	// If Request includes If-None-Match and matches hash, reply with 304
+-	// Otherwise, we delegate to the handler for actual content
+-	//
+-	// According to documentation, An Etag within an If-None-Match
+-	// header will be enclosed within double quotes:
+-	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-None-Match#directives
+-	if clientCachedHash := req.Header.Get("If-None-Match"); quotedHash == clientCachedHash {
+-		w.WriteHeader(http.StatusNotModified)
+-		return
+-	}
++	w.Header().Set("Cache-Control", "no-cache, private")
+
+ 	responsewriters.WriteObjectNegotiated(
+ 		serializer,
