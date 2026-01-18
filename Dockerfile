@@ -4,7 +4,6 @@ ARG KUBE_VERSION_GO=1.24
 ARG ETCD_VERSION=3.6.6
 
 FROM quay.io/coreos/etcd:v${ETCD_VERSION} AS etcd
-FROM registry.k8s.io/kube-apiserver:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kube-apiserver
 FROM registry.k8s.io/kube-controller-manager:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kube-controller-manager
 FROM registry.k8s.io/kube-scheduler:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kube-scheduler
 FROM registry.k8s.io/kubectl:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kubectl
@@ -28,6 +27,13 @@ RUN set -e && for patch in /patches/*.patch; do \
     done && \
     echo "=== Applied patches ===" && \
     git diff HEAD
+
+FROM builder AS kube-apiserver
+ARG KUBE_VERSION
+ENV KUBE_VERSION=${KUBE_VERSION}
+RUN --mount=type=cache,id=go-${KUBE_VERSION},target=/go \
+    CGO_ENABLED=0 make all WHAT=cmd/kube-apiserver KUBE_STATIC_OVERRIDES=kube-apiserver && \
+    mv /kubernetes/_output/local/go/bin/kube-apiserver /usr/local/bin/kube-apiserver
 
 FROM builder AS kubelet
 ARG KUBE_VERSION
