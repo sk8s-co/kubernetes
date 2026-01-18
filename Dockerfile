@@ -26,7 +26,10 @@ RUN set -e && for patch in /patches/*.patch; do \
     git apply --verbose "$patch"; \
     done && \
     echo "=== Applied patches ===" && \
-    git diff HEAD
+    git diff HEAD && \
+    git config user.email "build@localhost" && \
+    git config user.name "Build" && \
+    git add -A && git commit -m "Apply patches"
 
 FROM builder AS kube-apiserver
 ARG KUBE_VERSION
