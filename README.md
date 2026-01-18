@@ -6,7 +6,7 @@ Minimal bundle of Kubernetes control plane binaries, with patches for serverless
 
 - `etcd`
 - `etcdctl`
-- `kube-apiserver`
+- `kube-apiserver` (built from source with patches)
 - `kube-controller-manager`
 - `kube-scheduler`
 - `kubectl`
@@ -14,16 +14,20 @@ Minimal bundle of Kubernetes control plane binaries, with patches for serverless
 
 ## Patches
 
-The `kubelet` binary is built from source with patches applied for serverless compatibility. See [`patches/why.md`](patches/why.md) for details.
+Binaries built from source have patches applied for serverless compatibility. See [`patches/why.md`](patches/why.md) for details.
 
-## Versions
+## Build Matrix
 
-| Component | Version |
-|-----------|---------|
-| Kubernetes | 1.34.0 |
-| etcd | 3.6.6 |
+CI builds multi-arch images for each Kubernetes version. The build matrix is defined in [`.github/_versions.yaml`](.github/_versions.yaml).
 
-## Building
+| Kubernetes | Architectures |
+|------------|---------------|
+| 1.34 | `linux/amd64`, `linux/arm64` |
+| 1.35 | `linux/amd64`, `linux/arm64` |
+
+Images are published to `ghcr.io/sk8s-co/kubernetes:<version>`.
+
+## Building Locally
 
 ```bash
 docker build -t kubernetes .
