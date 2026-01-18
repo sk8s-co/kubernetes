@@ -18,11 +18,14 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       versions: ${{ steps.set-matrix.outputs.versions }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - id: set-matrix
         run: |
-          matrix='{"kube-version":[{"version":"1.34","go":"1.24"},{"version":"1.35","go":"1.25"}],"arch":[{"runner":"ubuntu-24.04","platform":"linux/amd64","suffix":"amd64"},{"runner":"ubuntu-24.04-arm64","platform":"linux/arm64","suffix":"arm64"}]}'
+          matrix=$(yq -o=json -I=0 . .github/_versions.yaml)
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          versions='["1.34","1.35"]'
+          versions=$(yq -o=json -I=0 '[.kube-version[].version]' .github/_versions.yaml)
           echo "versions=$versions" >> "$GITHUB_OUTPUT"
 
   build:
