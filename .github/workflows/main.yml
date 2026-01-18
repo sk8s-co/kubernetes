@@ -80,17 +80,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create and push manifest
-        run: |
-          SHA_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.kube-version }}-${{ github.sha }}"
-
-          docker buildx imagetools create -t "${SHA_TAG}" \
-            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.kube-version }}-${{ github.sha }}-amd64" \
-            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.kube-version }}-${{ github.sha }}-arm64"
-
-          # Push version tag only on main branch
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            VERSION_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.kube-version }}"
-            docker buildx imagetools create -t "${VERSION_TAG}" \
-              "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.kube-version }}-${{ github.sha }}-amd64" \
-              "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.kube-version }}-${{ github.sha }}-arm64"
-          fi
+        uses: int128/docker-manifest-create-action@v2
+        with:
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.kube-version }}-${{ github.sha }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/{1}:{2}', env.REGISTRY, env.IMAGE_NAME, matrix.kube-version) || '' }}
+          sources: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.kube-version }}-${{ github.sha }}-amd64
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.kube-version }}-${{ github.sha }}-arm64
