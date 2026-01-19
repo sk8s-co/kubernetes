@@ -1,11 +1,9 @@
-ARG KUBE_VERSION=1.34
+ARG KUBE_VERSION=1.35
 ARG KUBE_VERSION_PATCH=0
-ARG KUBE_VERSION_GO=1.24
+ARG KUBE_VERSION_GO=1.25
 ARG ETCD_VERSION=3.6.6
 
 FROM quay.io/coreos/etcd:v${ETCD_VERSION} AS etcd
-FROM registry.k8s.io/kube-controller-manager:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kube-controller-manager
-FROM registry.k8s.io/kube-scheduler:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kube-scheduler
 FROM registry.k8s.io/kubectl:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kubectl
 
 FROM golang:${KUBE_VERSION_GO}-alpine AS builder
@@ -37,6 +35,20 @@ ENV KUBE_VERSION=${KUBE_VERSION}
 RUN --mount=type=cache,id=go-${KUBE_VERSION},target=/go \
     CGO_ENABLED=0 make all WHAT=cmd/kube-apiserver KUBE_STATIC_OVERRIDES=kube-apiserver && \
     mv /kubernetes/_output/local/go/bin/kube-apiserver /usr/local/bin/kube-apiserver
+
+FROM builder AS kube-controller-manager
+ARG KUBE_VERSION
+ENV KUBE_VERSION=${KUBE_VERSION}
+RUN --mount=type=cache,id=go-${KUBE_VERSION},target=/go \
+    CGO_ENABLED=0 make all WHAT=cmd/kube-controller-manager KUBE_STATIC_OVERRIDES=kube-controller-manager && \
+    mv /kubernetes/_output/local/go/bin/kube-controller-manager /usr/local/bin/kube-controller-manager
+
+FROM builder AS kube-scheduler
+ARG KUBE_VERSION
+ENV KUBE_VERSION=${KUBE_VERSION}
+RUN --mount=type=cache,id=go-${KUBE_VERSION},target=/go \
+    CGO_ENABLED=0 make all WHAT=cmd/kube-scheduler KUBE_STATIC_OVERRIDES=kube-scheduler && \
+    mv /kubernetes/_output/local/go/bin/kube-scheduler /usr/local/bin/kube-scheduler
 
 FROM builder AS kubelet
 ARG KUBE_VERSION
