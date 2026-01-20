@@ -59,7 +59,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: ${{ matrix.arch.platform }}
+          platforms: linux/${{ matrix.arch.suffix }}
           pull: true
           push: true
           provenance: false
