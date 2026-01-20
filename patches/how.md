@@ -4,13 +4,19 @@ Patches in this directory are applied to the Kubernetes source before building k
 
 ## Directory Structure
 
+Patch folders are named using [semver ranges](https://github.com/npm/node-semver#ranges). Patches are applied if the build version satisfies the folder's range.
+
 ```
 patches/
-  1.34/           # Patches for Kubernetes 1.34.x
+  ^1.34/          # Patches for Kubernetes >=1.34.0 <2.0.0
     etag-cache-control.patch
-  1.35/           # Patches for Kubernetes 1.35.x (future)
   how.md          # This file
 ```
+
+Common range patterns:
+- `^1.34` - matches >=1.34.0 <2.0.0 (any 1.x starting from 1.34)
+- `~1.34.0` - matches >=1.34.0 <1.35.0 (only 1.34.x)
+- `>=1.35.0` - matches 1.35.0 and above
 
 ## Creating a New Patch
 
@@ -22,9 +28,9 @@ patches/
 
 2. Make your changes to the source files.
 
-3. Generate the patch:
+3. Generate the patch (place in appropriate semver range folder):
    ```bash
-   git diff > /path/to/patches/1.34/my-patch.patch
+   git diff > /path/to/patches/^1.34/my-patch.patch
    ```
 
 4. Verify the patch applies cleanly:

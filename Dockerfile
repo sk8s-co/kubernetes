@@ -13,15 +13,26 @@ ARG KUBE_VERSION_GO \
 ENV KUBE_VERSION_GO=${KUBE_VERSION_GO} \
     KUBE_VERSION=${KUBE_VERSION} \
     KUBE_VERSION_PATCH=${KUBE_VERSION_PATCH}
-RUN apk add --no-cache git make bash
+RUN apk add --no-cache git make bash npm && npm install -g semver@7
 RUN git clone https://github.com/kubernetes/kubernetes.git -b v${KUBE_VERSION}.${KUBE_VERSION_PATCH} --depth=1 /kubernetes
 WORKDIR /kubernetes
 
-COPY patches/${KUBE_VERSION}/*.patch /patches/
-RUN set -e && for patch in /patches/*.patch; do \
-    echo "Applying patch: $patch" && \
-    git apply --verbose --check "$patch" && \
-    git apply --verbose "$patch"; \
+COPY patches/ /patches/
+RUN set -e && \
+    current="${KUBE_VERSION}.${KUBE_VERSION_PATCH}" && \
+    for dir in /patches/*/; do \
+        [ -d "$dir" ] || continue; \
+        range=$(basename "$dir") && \
+        if semver -r "$range" "$current" >/dev/null 2>&1; then \
+            for patch in "$dir"*.patch; do \
+                [ -f "$patch" ] || continue; \
+                echo "Applying patch: $patch (range: $range)" && \
+                git apply --verbose --check "$patch" && \
+                git apply --verbose "$patch"; \
+            done; \
+        else \
+            echo "Skipping patches in $dir (range $range does not match $current)"; \
+        fi; \
     done && \
     echo "=== Applied patches ===" && \
     git diff HEAD && \
