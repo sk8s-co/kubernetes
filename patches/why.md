@@ -28,20 +28,3 @@ Using `no-cache, private` ensures clients always revalidate with the origin serv
 Reducing these values ensures faster cleanup of stale leases when API server instances scale down or terminate unexpectedly.
 
 **File:** `pkg/controlplane/apiserver/server.go`
-
-## configurable-idle-conns.patch
-
-**Versions:** `^1.34` (>=1.34.0 <2.0.0)
-
-**Changes:**
-- Makes `idleConnsPerHost` configurable via `KUBE_CLIENT_MAX_IDLE_CONNS_PER_HOST` environment variable
-- Default remains 25 if not set
-
-**Why:** Lambda Function URLs only support HTTP/1.1 (no HTTP/2), which means no request multiplexing. Each concurrent request needs its own TCP connection, causing the connection pool to fill up quickly with the default of 25 connections per host.
-
-Usage:
-```bash
-export KUBE_CLIENT_MAX_IDLE_CONNS_PER_HOST=5
-```
-
-**File:** `staging/src/k8s.io/client-go/transport/cache.go`
