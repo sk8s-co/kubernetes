@@ -13,3 +13,18 @@
 Using `no-cache, private` ensures clients always revalidate with the origin server and prevents shared caches from storing the response. The `If-None-Match` / 304 logic is also removed to guarantee full responses are always returned, avoiding edge cases where cached ETags from a previous server instance cause incorrect cache hits.
 
 **File:** `staging/src/k8s.io/apiserver/pkg/endpoints/discovery/aggregated/etag.go`
+
+## serverless-lease-tuning.patch
+
+**Versions:** `^1.34` (>=1.34.0 <2.0.0)
+
+**Changes:**
+- `IdentityLeaseGCPeriod`: 3600s → 5s
+- `IdentityLeaseDurationSeconds`: 3600 → 30
+- `LeaseCandidateGCPeriod`: 30min → 1min
+
+**Why:** The default API server lease timing values are optimized for long-running instances. In serverless environments where API servers are ephemeral and may terminate without graceful shutdown, stale identity leases accumulate in the `kube-system` namespace. The 1-hour GC period means orphaned leases persist far too long.
+
+Reducing these values ensures faster cleanup of stale leases when API server instances scale down or terminate unexpectedly.
+
+**File:** `pkg/controlplane/apiserver/server.go`
