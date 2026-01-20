@@ -1,0 +1,22 @@
+diff --git a/staging/src/k8s.io/client-go/transport/cache.go b/staging/src/k8s.io/client-go/transport/cache.go
+index b8dd8661..d6476880 100644
+--- a/staging/src/k8s.io/client-go/transport/cache.go
++++ b/staging/src/k8s.io/client-go/transport/cache.go
+@@ -21,6 +21,8 @@ import (
+ 	"fmt"
+ 	"net"
+ 	"net/http"
++	"os"
++	"strconv"
+ 	"strings"
+ 	"sync"
+ 	"time"
+@@ -44,7 +46,7 @@ type tlsTransportCache struct {
+ // leakages.
+ var DialerStopCh = wait.NeverStop
+ 
+-const idleConnsPerHost = 25
++var idleConnsPerHost = func() int { if v, err := strconv.Atoi(os.Getenv("KUBE_CLIENT_MAX_IDLE_CONNS_PER_HOST")); err == nil && v > 0 { return v }; return 25 }()
+ 
+ var tlsCache = &tlsTransportCache{transports: make(map[tlsCacheKey]*http.Transport)}
+ 
