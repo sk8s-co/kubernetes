@@ -28,3 +28,14 @@ Using `no-cache, private` ensures clients always revalidate with the origin serv
 Reducing these values ensures faster cleanup of stale leases when API server instances scale down or terminate unexpectedly.
 
 **File:** `pkg/controlplane/apiserver/server.go`
+
+## identity-prefix-env.patch
+
+**Versions:** `^1.34` (>=1.34.0 <2.0.0)
+
+**Changes:**
+- Adds support for `IDENTITY_PREFIX` environment variable to prefix the API server identity
+
+**Why:** In serverless or multi-tenant environments, it can be useful to distinguish API server instances by adding a custom prefix to their identity. This allows operators to set `IDENTITY_PREFIX` to identify which deployment, region, or tenant an API server belongs to. The prefix is prepended to the generated `apiserver-<hash>` identity, resulting in IDs like `myprefix-apiserver-<hash>`.
+
+**File:** `staging/src/k8s.io/apiserver/pkg/server/config.go`
