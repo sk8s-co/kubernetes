@@ -42,7 +42,7 @@ Reducing these values ensures faster cleanup of stale leases when API server ins
 
 ## short-watch-timeout.patch
 
-**Versions:** `^1.34` (>=1.34.0 <2.0.0)
+**Versions:** `^1.35` (>=1.35.0 <2.0.0)
 
 **Changes:**
 - `defaultMinWatchTimeout`: 5 minutes → 5 seconds
