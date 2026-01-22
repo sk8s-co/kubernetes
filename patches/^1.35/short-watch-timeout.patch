@@ -13,7 +13,7 @@ index 6abf0b31ddd..a27df66a793 100644
  	)
  	item := &objectCacheItem{
 diff --git a/staging/src/k8s.io/client-go/tools/cache/reflector.go b/staging/src/k8s.io/client-go/tools/cache/reflector.go
-index af2c7a22d07..94a88341b2b 100644
+index af2c7a22d07..f804880cebe 100644
 --- a/staging/src/k8s.io/client-go/tools/cache/reflector.go
 +++ b/staging/src/k8s.io/client-go/tools/cache/reflector.go
 @@ -52,7 +52,7 @@ const defaultExpectedTypeName = "<unspecified>"
@@ -30,7 +30,7 @@ index af2c7a22d07..94a88341b2b 100644
  		// API server is not healthy. With these parameters, backoff will stop at [30,60) sec interval which is
  		// 0.22 QPS. If we don't backoff for 2min, assume API server is healthy and we reset the backoff.
 -		backoffManager:    wait.NewExponentialBackoffManager(800*time.Millisecond, 30*time.Second, 2*time.Minute, 2.0, 1.0, reflectorClock),
-+		backoffManager:    wait.NewExponentialBackoffManager(2*time.Second, 30*time.Second, 2*time.Minute, 2.0, 1.0, reflectorClock),
++		backoffManager:    wait.NewExponentialBackoffManager(30*time.Second, 120*time.Second, 2*time.Minute, 2.0, 1.0, reflectorClock),
  		clock:             reflectorClock,
  		watchErrorHandler: WatchErrorHandlerWithContext(DefaultWatchErrorHandler),
  		expectedType:      reflect.TypeOf(expectedType),

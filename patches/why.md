@@ -46,12 +46,13 @@ Reducing these values ensures faster cleanup of stale leases when API server ins
 
 **Changes:**
 - `defaultMinWatchTimeout`: 5 minutes → 5 seconds
-- Initial backoff: 800ms → 2 seconds
+- Initial backoff: 800ms → 30 seconds
+- Max backoff: 30 seconds → 120 seconds
 - Removes 30-minute override for Secrets/ConfigMaps watch manager
 
 **Why:** Kubernetes watch requests use long-lived HTTP connections (5-10 minutes by default, 30-60 minutes for Secrets/ConfigMaps). In serverless environments like AWS Lambda, HTTP requests must complete quickly due to execution time limits and the ephemeral nature of function instances.
 
-This patch reduces watch timeouts to 5-10 seconds and increases the initial retry backoff to 2 seconds (sequence: 2s → 4s → 8s → 16s → 30s max), ensuring watch connections cycle frequently without hammering the API server.
+This patch reduces watch timeouts to 5-10 seconds and adds a 30-second baseline backoff (sequence: 30s → 60s → 120s max), ensuring watch connections cycle frequently with sufficient delay between reconnects to avoid excessive Lambda invocations.
 
 **Files:**
 - `staging/src/k8s.io/client-go/tools/cache/reflector.go`
