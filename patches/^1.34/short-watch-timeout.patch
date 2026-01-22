@@ -1,0 +1,36 @@
+diff --git a/pkg/kubelet/util/manager/watch_based_manager.go b/pkg/kubelet/util/manager/watch_based_manager.go
+index 6abf0b31ddd..a27df66a793 100644
+--- a/pkg/kubelet/util/manager/watch_based_manager.go
++++ b/pkg/kubelet/util/manager/watch_based_manager.go
+@@ -236,9 +236,6 @@ func (c *objectCache) newReflectorLocked(namespace, name string) *objectCacheIte
+ 		store,
+ 		cache.ReflectorOptions{
+ 			Name: fmt.Sprintf("object-%q/%q", namespace, name),
+-			// Bump default 5m MinWatchTimeout to avoid recreating
+-			// watches too often.
+-			MinWatchTimeout: 30 * time.Minute,
+ 		},
+ 	)
+ 	item := &objectCacheItem{
+diff --git a/staging/src/k8s.io/client-go/tools/cache/reflector.go b/staging/src/k8s.io/client-go/tools/cache/reflector.go
+index af2c7a22d07..94a88341b2b 100644
+--- a/staging/src/k8s.io/client-go/tools/cache/reflector.go
++++ b/staging/src/k8s.io/client-go/tools/cache/reflector.go
+@@ -52,7 +52,7 @@ const defaultExpectedTypeName = "<unspecified>"
+ 
+ // We try to spread the load on apiserver by setting timeouts for
+ // watch requests - it is random in [minWatchTimeout, 2*minWatchTimeout].
+-var defaultMinWatchTimeout = 5 * time.Minute
++var defaultMinWatchTimeout = 5 * time.Second
+ 
+ // ReflectorStore is the subset of cache.Store that the reflector uses
+ type ReflectorStore interface {
+@@ -279,7 +279,7 @@ func NewReflectorWithOptions(lw ListerWatcher, expectedType interface{}, store R
+ 		// We used to make the call every 1sec (1 QPS), the goal here is to achieve ~98% traffic reduction when
+ 		// API server is not healthy. With these parameters, backoff will stop at [30,60) sec interval which is
+ 		// 0.22 QPS. If we don't backoff for 2min, assume API server is healthy and we reset the backoff.
+-		backoffManager:    wait.NewExponentialBackoffManager(800*time.Millisecond, 30*time.Second, 2*time.Minute, 2.0, 1.0, reflectorClock),
++		backoffManager:    wait.NewExponentialBackoffManager(2*time.Second, 30*time.Second, 2*time.Minute, 2.0, 1.0, reflectorClock),
+ 		clock:             reflectorClock,
+ 		watchErrorHandler: WatchErrorHandlerWithContext(DefaultWatchErrorHandler),
+ 		expectedType:      reflect.TypeOf(expectedType),
