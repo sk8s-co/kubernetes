@@ -1,3 +1,114 @@
+diff --git a/staging/src/k8s.io/apimachinery/pkg/util/wait/backoff.go b/staging/src/k8s.io/apimachinery/pkg/util/wait/backoff.go
+index 177be09a957..576bdbf20cf 100644
+--- a/staging/src/k8s.io/apimachinery/pkg/util/wait/backoff.go
++++ b/staging/src/k8s.io/apimachinery/pkg/util/wait/backoff.go
+@@ -23,6 +23,7 @@ import (
+ 	"time"
+ 
+ 	"k8s.io/apimachinery/pkg/util/runtime"
++	"k8s.io/klog/v2"
+ 	"k8s.io/utils/clock"
+ )
+ 
+@@ -331,16 +332,25 @@ type BackoffManager interface {
+ 	// Backoff() call finishes, the first timer will NOT be drained and result in undetermined
+ 	// behavior.
+ 	Backoff() clock.Timer
++	// WithIdentifier sets an identifier for logging purposes and returns the BackoffManager.
++	WithIdentifier(string) BackoffManager
+ }
+ 
+ // Deprecated: Will be removed when the legacy polling functions are removed.
+-type exponentialBackoffManagerImpl struct {
++type ExponentialBackoffManagerImpl struct {
+ 	backoff              *Backoff
+ 	backoffTimer         clock.Timer
+ 	lastBackoffStart     time.Time
+ 	initialBackoff       time.Duration
+ 	backoffResetDuration time.Duration
+ 	clock                clock.Clock
++	identifier           string
++}
++
++// WithIdentifier sets an identifier for logging purposes and returns the BackoffManager.
++func (b *ExponentialBackoffManagerImpl) WithIdentifier(id string) BackoffManager {
++	b.identifier = id
++	return b
+ }
+ 
+ // NewExponentialBackoffManager returns a manager for managing exponential backoff. Each backoff is jittered and
+@@ -368,7 +378,7 @@ type exponentialBackoffManagerImpl struct {
+ //	}.DelayWithReset(reset, clock)
+ //	wait.BackoffUntil(..., delayFn.Timer(), ...)
+ func NewExponentialBackoffManager(initBackoff, maxBackoff, resetDuration time.Duration, backoffFactor, jitter float64, c clock.Clock) BackoffManager {
+-	return &exponentialBackoffManagerImpl{
++	return &ExponentialBackoffManagerImpl{
+ 		backoff: &Backoff{
+ 			Duration: initBackoff,
+ 			Factor:   backoffFactor,
+@@ -387,21 +397,26 @@ func NewExponentialBackoffManager(initBackoff, maxBackoff, resetDuration time.Du
+ 	}
+ }
+ 
+-func (b *exponentialBackoffManagerImpl) getNextBackoff() time.Duration {
++func (b *ExponentialBackoffManagerImpl) getNextBackoff() time.Duration {
+ 	if b.clock.Now().Sub(b.lastBackoffStart) > b.backoffResetDuration {
++		klog.V(4).Info("Backoff reset due to elapsed time", "identifier", b.identifier, "elapsed", b.clock.Now().Sub(b.lastBackoffStart), "resetDuration", b.backoffResetDuration)
+ 		b.backoff.Steps = math.MaxInt32
+ 		b.backoff.Duration = b.initialBackoff
+ 	}
+ 	b.lastBackoffStart = b.clock.Now()
+-	return b.backoff.Step()
++	duration := b.backoff.Step()
++	klog.V(4).Info("Backoff step", "identifier", b.identifier, "duration", duration)
++	return duration
+ }
+ 
+ // Backoff implements BackoffManager.Backoff, it returns a timer so caller can block on the timer for exponential backoff.
+ // The returned timer must be drained before calling Backoff() the second time
+-func (b *exponentialBackoffManagerImpl) Backoff() clock.Timer {
++func (b *ExponentialBackoffManagerImpl) Backoff() clock.Timer {
+ 	if b.backoffTimer == nil {
++		klog.V(4).Info("Creating new backoff timer", "identifier", b.identifier)
+ 		b.backoffTimer = b.clock.NewTimer(b.getNextBackoff())
+ 	} else {
++		klog.V(4).Info("Resetting backoff timer", "identifier", b.identifier)
+ 		b.backoffTimer.Reset(b.getNextBackoff())
+ 	}
+ 	return b.backoffTimer
+@@ -415,6 +430,11 @@ type jitteredBackoffManagerImpl struct {
+ 	backoffTimer clock.Timer
+ }
+ 
++// WithIdentifier is a no-op for jitteredBackoffManagerImpl (for interface compatibility).
++func (j *jitteredBackoffManagerImpl) WithIdentifier(id string) BackoffManager {
++	return j
++}
++
+ // NewJitteredBackoffManager returns a BackoffManager that backoffs with given duration plus given jitter. If the jitter
+ // is negative, backoff will not be jittered.
+ //
+diff --git a/staging/src/k8s.io/apimachinery/pkg/util/wait/wait_test.go b/staging/src/k8s.io/apimachinery/pkg/util/wait/wait_test.go
+index 39c5d299103..6df4108672e 100644
+--- a/staging/src/k8s.io/apimachinery/pkg/util/wait/wait_test.go
++++ b/staging/src/k8s.io/apimachinery/pkg/util/wait/wait_test.go
+@@ -780,14 +780,14 @@ func TestExponentialBackoffManagerGetNextBackoff(t *testing.T) {
+ 	backoff := NewExponentialBackoffManager(1, 10, 10, 2.0, 0.0, fc)
+ 	durations := []time.Duration{1, 2, 4, 8, 10, 10, 10}
+ 	for i := 0; i < len(durations); i++ {
+-		generatedBackoff := backoff.(*exponentialBackoffManagerImpl).getNextBackoff()
++		generatedBackoff := backoff.(*ExponentialBackoffManagerImpl).getNextBackoff()
+ 		if generatedBackoff != durations[i] {
+ 			t.Errorf("unexpected %d-th backoff: %d, expecting %d", i, generatedBackoff, durations[i])
+ 		}
+ 	}
+ 
+ 	fc.Step(11)
+-	resetDuration := backoff.(*exponentialBackoffManagerImpl).getNextBackoff()
++	resetDuration := backoff.(*ExponentialBackoffManagerImpl).getNextBackoff()
+ 	if resetDuration != 1 {
+ 		t.Errorf("after reset, backoff should be 1, but got %d", resetDuration)
+ 	}
 diff --git a/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go b/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go
 index eb52baf1946..d5ab57b233c 100644
 --- a/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go
@@ -22,7 +133,7 @@ index eb52baf1946..d5ab57b233c 100644
  			klog.V(3).InfoS("Starting watch", "path", req.URL.Path, "resourceVersion", opts.ResourceVersion, "labels", opts.LabelSelector, "fields", opts.FieldSelector, "timeout", timeout)
  			ctx, cancel := context.WithTimeout(ctx, timeout)
 diff --git a/staging/src/k8s.io/client-go/tools/cache/reflector.go b/staging/src/k8s.io/client-go/tools/cache/reflector.go
-index af2c7a22d07..03843c9946f 100644
+index af2c7a22d07..1f13668bca2 100644
 --- a/staging/src/k8s.io/client-go/tools/cache/reflector.go
 +++ b/staging/src/k8s.io/client-go/tools/cache/reflector.go
 @@ -22,7 +22,9 @@ import (
@@ -109,7 +220,7 @@ index af2c7a22d07..03843c9946f 100644
  	// Clock allows tests to control time. If unset defaults to clock.RealClock{}
  	Clock clock.Clock
  }
-@@ -269,21 +315,23 @@ func NewReflectorWithOptions(lw ListerWatcher, expectedType interface{}, store R
+@@ -269,17 +315,18 @@ func NewReflectorWithOptions(lw ListerWatcher, expectedType interface{}, store R
  	if options.MinWatchTimeout > defaultMinWatchTimeout {
  		minWatchTimeout = options.MinWatchTimeout
  	}
@@ -118,41 +229,50 @@ index af2c7a22d07..03843c9946f 100644
 +		maxWatchTimeout = options.MaxWatchTimeout
 +	}
  	r := &Reflector{
- 		name:            options.Name,
- 		resyncPeriod:    options.ResyncPeriod,
- 		minWatchTimeout: minWatchTimeout,
-+		maxWatchTimeout: maxWatchTimeout,
- 		typeDescription: options.TypeDescription,
- 		listerWatcher:   ToListerWatcherWithContext(lw),
- 		store:           store,
+-		name:            options.Name,
+-		resyncPeriod:    options.ResyncPeriod,
+-		minWatchTimeout: minWatchTimeout,
+-		typeDescription: options.TypeDescription,
+-		listerWatcher:   ToListerWatcherWithContext(lw),
+-		store:           store,
 -		// We used to make the call every 1sec (1 QPS), the goal here is to achieve ~98% traffic reduction when
 -		// API server is not healthy. With these parameters, backoff will stop at [30,60) sec interval which is
 -		// 0.22 QPS. If we don't backoff for 2min, assume API server is healthy and we reset the backoff.
 -		backoffManager:    wait.NewExponentialBackoffManager(800*time.Millisecond, 30*time.Second, 2*time.Minute, 2.0, 1.0, reflectorClock),
++		name:              options.Name,
++		resyncPeriod:      options.ResyncPeriod,
++		minWatchTimeout:   minWatchTimeout,
++		maxWatchTimeout:   maxWatchTimeout,
++		typeDescription:   options.TypeDescription,
++		listerWatcher:     ToListerWatcherWithContext(lw),
++		store:             store,
  		clock:             reflectorClock,
  		watchErrorHandler: WatchErrorHandlerWithContext(DefaultWatchErrorHandler),
  		expectedType:      reflect.TypeOf(expectedType),
+@@ -293,6 +340,8 @@ func NewReflectorWithOptions(lw ListerWatcher, expectedType interface{}, store R
+ 		r.typeDescription = getTypeDescriptionFromObject(expectedType)
  	}
-+	r.resetBackoff()
  
- 	if r.name == "" {
- 		r.name = naming.GetNameFromCallsite(internalPackages...)
-@@ -350,6 +398,21 @@ func getExpectedGVKFromObject(expectedType interface{}) *schema.GroupVersionKind
++	r.backoffManager = wait.NewExponentialBackoffManager(defaultBackoffInit, defaultBackoffMax, defaultBackoffReset, defaultBackoffFactor, defaultBackoffJitter, reflectorClock).WithIdentifier(r.name + "/" + r.typeDescription)
++
+ 	if r.expectedGVK == nil {
+ 		r.expectedGVK = getExpectedGVKFromObject(expectedType)
+ 	}
+@@ -350,6 +399,20 @@ func getExpectedGVKFromObject(expectedType interface{}) *schema.GroupVersionKind
  // call chains to NewReflector, so they'd be low entropy names for reflectors
  var internalPackages = []string{"client-go/tools/cache/"}
  
 +// resetBackoff recreates the backoff manager, resetting the backoff to initial values.
 +// Call this when activity is detected to allow fast reconnection.
 +// Only resets after backoffResetCount exceeds defaultBackoffResetThreshold (default 0).
-+func (r *Reflector) resetBackoff() {
-+	if r.backoffManager == nil {
-+		r.backoffManager = wait.NewExponentialBackoffManager(defaultBackoffInit, defaultBackoffMax, defaultBackoffReset, defaultBackoffFactor, defaultBackoffJitter, r.clock)
-+		return
-+	}
++func (r *Reflector) resetBackoff(ctx context.Context) {
 +	r.backoffResetCount++
 +	if defaultBackoffResetThreshold != 0 && r.backoffResetCount > defaultBackoffResetThreshold {
-+		r.backoffManager = wait.NewExponentialBackoffManager(defaultBackoffInit, defaultBackoffMax, defaultBackoffReset, defaultBackoffFactor, defaultBackoffJitter, r.clock)
++		klog.FromContext(ctx).V(4).Info("Resetting backoff manager", "reflector", r.name, "type", r.typeDescription, "resetCount", r.backoffResetCount)
++		r.backoffManager = wait.NewExponentialBackoffManager(defaultBackoffInit, defaultBackoffMax, defaultBackoffReset, defaultBackoffFactor, defaultBackoffJitter, r.clock).WithIdentifier(r.name + "/" + r.typeDescription)
 +		r.backoffResetCount = 0
++	} else {
++		klog.FromContext(ctx).V(4).Info("Not resetting backoff manager", "reflector", r.name, "type", r.typeDescription, "resetCount", r.backoffResetCount)
 +	}
 +}
 +
@@ -173,7 +293,7 @@ index af2c7a22d07..03843c9946f 100644
  			return nil
  		}
 +		// Watch completed successfully (ran 1+ seconds or received events) - reset backoff
-+		r.resetBackoff()
++		r.resetBackoff(ctx)
  	}
  }
  
@@ -186,3 +306,26 @@ index af2c7a22d07..03843c9946f 100644
  		options := metav1.ListOptions{
  			ResourceVersion:      lastKnownRV,
  			AllowWatchBookmarks:  true,
+@@ -890,6 +955,7 @@ func handleAnyWatch(
+ 	watchListBookmarkReceived := false
+ 	eventCount := 0
+ 	logger := klog.FromContext(ctx)
++	klog.FromContext(ctx).V(4).Info("Watch open", "reflector", name, "type", expectedTypeName)
+ 	initialEventsEndBookmarkWarningTicker := newInitialEventsEndBookmarkTicker(logger, name, clock, start, exitOnWatchListBookmarkReceived)
+ 	defer initialEventsEndBookmarkWarningTicker.Stop()
+ 	stopWatcher := true
+diff --git a/staging/src/k8s.io/client-go/tools/cache/reflector_test.go b/staging/src/k8s.io/client-go/tools/cache/reflector_test.go
+index 5554b16f2a6..5d757f7155b 100644
+--- a/staging/src/k8s.io/client-go/tools/cache/reflector_test.go
++++ b/staging/src/k8s.io/client-go/tools/cache/reflector_test.go
+@@ -814,6 +814,10 @@ func (f *fakeBackoff) Backoff() clock.Timer {
+ 	return f.clock.NewTimer(time.Duration(0))
+ }
+ 
++func (f *fakeBackoff) WithIdentifier(string) wait.BackoffManager {
++	return f
++}
++
+ func TestBackoffOnTooManyRequests(t *testing.T) {
+ 	_, ctx := ktesting.NewTestContext(t)
+ 	err := apierrors.NewTooManyRequests("too many requests", 1)

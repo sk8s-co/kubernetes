@@ -41,6 +41,8 @@ Disabling this feature avoids the broken peer discovery mechanism entirely.
 - Client-side: `WATCH_BACKOFF_FACTOR`, `WATCH_BACKOFF_JITTER` (floats)
 - Client-side: `WATCH_BACKOFF_RESET_THRESHOLD` (int) - number of successful watches before backoff resets
 - Activity-based backoff reset (opt-in): when `WATCH_BACKOFF_RESET_THRESHOLD` > 0, backoff resets after N successful watches
+- V(4) logging for watch open/close, backoff timer create/reset, backoff step duration
+- `BackoffManager.WithIdentifier()` method to set identifier for backoff logging
 
 **Why:** In serverless environments, long-lived HTTP connections and aggressive reconnection are problematic. This patch allows operators to tune watch behavior via environment variables without code changes.
 
@@ -69,3 +71,6 @@ With these settings: fast polling when events are received, backs off to 60s gap
 **Files:**
 - `staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go`
 - `staging/src/k8s.io/client-go/tools/cache/reflector.go`
+- `staging/src/k8s.io/client-go/tools/cache/reflector_test.go`
+- `staging/src/k8s.io/apimachinery/pkg/util/wait/backoff.go`
+- `staging/src/k8s.io/apimachinery/pkg/util/wait/wait_test.go`
