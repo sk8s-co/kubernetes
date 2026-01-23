@@ -2,7 +2,7 @@
 
 ## etag-cache-control.patch
 
-**Versions:** `^1.34` (>=1.34.0 <2.0.0)
+**Versions:** `^1.35` (>=1.35.0 <2.0.0)
 
 **Changes:**
 - Sets `Cache-Control` header from `public` to `no-cache, private`
@@ -14,48 +14,41 @@ Using `no-cache, private` ensures clients always revalidate with the origin serv
 
 **File:** `staging/src/k8s.io/apiserver/pkg/endpoints/discovery/aggregated/etag.go`
 
-## serverless-lease-tuning.patch
-
-**Versions:** `^1.34` (>=1.34.0 <2.0.0)
-
-**Changes:**
-- `IdentityLeaseGCPeriod`: 3600s → 5s
-- `IdentityLeaseDurationSeconds`: 3600 → 30
-- `LeaseCandidateGCPeriod`: 30min → 1min
-
-**Why:** The default API server lease timing values are optimized for long-running instances. In serverless environments where API servers are ephemeral and may terminate without graceful shutdown, stale identity leases accumulate in the `kube-system` namespace. The 1-hour GC period means orphaned leases persist far too long.
-
-Reducing these values ensures faster cleanup of stale leases when API server instances scale down or terminate unexpectedly.
-
-**File:** `pkg/controlplane/apiserver/server.go`
-
-## identity-prefix-env.patch
-
-**Versions:** `^1.34` (>=1.34.0 <2.0.0)
-
-**Changes:**
-- Adds support for `IDENTITY_PREFIX` environment variable to prefix the API server identity
-
-**Why:** In serverless or multi-tenant environments, it can be useful to distinguish API server instances by adding a custom prefix to their identity. This allows operators to set `IDENTITY_PREFIX` to identify which deployment, region, or tenant an API server belongs to. The prefix is prepended to the generated `apiserver-<hash>` identity, resulting in IDs like `myprefix-apiserver-<hash>`.
-
-**File:** `staging/src/k8s.io/apiserver/pkg/server/config.go`
-
-## short-watch-timeout.patch
+## disable-apiserver-identity.patch
 
 **Versions:** `^1.35` (>=1.35.0 <2.0.0)
 
 **Changes:**
-- `defaultMinWatchTimeout`: 5 minutes → 30 seconds (client-side)
-- Removes random multiplier from watch timeout (client-side)
-- Backoff: flat 30 seconds with no jitter (client-side)
-- Removes 30-minute override for Secrets/ConfigMaps watch manager (client-side)
-- Caps all watch requests to 30 seconds max (server-side)
+- Disables `APIServerIdentity` feature gate by default (Beta → default false)
 
-**Why:** Kubernetes watch requests use long-lived HTTP connections (5-10 minutes by default, 30-60 minutes for Secrets/ConfigMaps). In serverless environments like AWS Lambda, HTTP requests must complete quickly due to execution time limits and the ephemeral nature of function instances.
+**Why:** The APIServerIdentity feature creates Lease objects in `kube-system` for each API server instance, storing private IP addresses for peer discovery and proxy functionality. In serverless environments (e.g., Lambda), API server instances don't have stable private IPs that peers can reach - they're behind load balancers or NAT. The peer proxy feature assumes direct IP connectivity between API servers, which doesn't exist in serverless architectures.
 
-The client-side changes set watch timeouts to a fixed 30 seconds for the kubelet with a predictable 30-second delay between reconnects. The server-side change caps all watch requests to 30 seconds, catching third-party clients (kubectl, k9s, Lens, etc.) that use unpatched client-go with default 5-10 minute timeouts.
+Disabling this feature avoids the broken peer discovery mechanism entirely.
+
+**File:** `staging/src/k8s.io/apiserver/pkg/features/kube_features.go`
+
+## watch.patch
+
+**Versions:** `^1.35` (>=1.35.0 <2.0.0)
+
+**Changes:**
+- Adds environment variables for watch timeout and backoff configuration
+- Server-side: `WATCH_MAX_TIMEOUT` caps incoming watch requests
+- Client-side: `WATCH_MIN_TIMEOUT`, `WATCH_MAX_TIMEOUT` control timeout range `[min, max]`
+- Client-side: `WATCH_BACKOFF_INIT`, `WATCH_BACKOFF_MAX`, `WATCH_BACKOFF_RESET` (seconds)
+- Client-side: `WATCH_BACKOFF_FACTOR`, `WATCH_BACKOFF_JITTER` (floats)
+
+**Why:** In serverless environments, long-lived HTTP connections and aggressive reconnection are problematic. This patch allows operators to tune watch behavior via environment variables without code changes.
+
+**Defaults (original Kubernetes behavior):**
+- `WATCH_MIN_TIMEOUT`: 300 (5 minutes)
+- `WATCH_MAX_TIMEOUT`: 600 (10 minutes)
+- `WATCH_BACKOFF_INIT`: 0.8 seconds (800ms - use 1 for 1 second minimum)
+- `WATCH_BACKOFF_MAX`: 30 seconds
+- `WATCH_BACKOFF_RESET`: 120 seconds (2 minutes)
+- `WATCH_BACKOFF_FACTOR`: 2.0
+- `WATCH_BACKOFF_JITTER`: 1.0
 
 **Files:**
-- `staging/src/k8s.io/client-go/tools/cache/reflector.go`
-- `pkg/kubelet/util/manager/watch_based_manager.go`
 - `staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go`
+- `staging/src/k8s.io/client-go/tools/cache/reflector.go`

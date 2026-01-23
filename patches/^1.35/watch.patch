@@ -1,0 +1,142 @@
+diff --git a/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go b/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go
+index eb52baf1946..d5ab57b233c 100644
+--- a/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go
++++ b/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go
+@@ -22,6 +22,8 @@ import (
+ 	"math/rand"
+ 	"net/http"
+ 	"net/url"
++	"os"
++	"strconv"
+ 	"strings"
+ 	"time"
+ 
+@@ -259,6 +261,9 @@ func ListResource(r rest.Lister, rw rest.Watcher, scope *RequestScope, forceWatc
+ 			if timeout == 0 && minRequestTimeout > 0 {
+ 				timeout = time.Duration(float64(minRequestTimeout) * (rand.Float64() + 1.0))
+ 			}
++			if max, _ := strconv.Atoi(os.Getenv("WATCH_MAX_TIMEOUT")); max > 0 && (timeout == 0 || timeout > time.Duration(max)*time.Second) {
++				timeout = time.Duration(max) * time.Second
++			}
+ 
+ 			klog.V(3).InfoS("Starting watch", "path", req.URL.Path, "resourceVersion", opts.ResourceVersion, "labels", opts.LabelSelector, "fields", opts.FieldSelector, "timeout", timeout)
+ 			ctx, cancel := context.WithTimeout(ctx, timeout)
+diff --git a/staging/src/k8s.io/client-go/tools/cache/reflector.go b/staging/src/k8s.io/client-go/tools/cache/reflector.go
+index af2c7a22d07..bcdc20a4d07 100644
+--- a/staging/src/k8s.io/client-go/tools/cache/reflector.go
++++ b/staging/src/k8s.io/client-go/tools/cache/reflector.go
+@@ -22,7 +22,9 @@ import (
+ 	"fmt"
+ 	"io"
+ 	"math/rand"
++	"os"
+ 	"reflect"
++	"strconv"
+ 	"strings"
+ 	"sync"
+ 	"time"
+@@ -51,8 +53,42 @@ import (
+ const defaultExpectedTypeName = "<unspecified>"
+ 
+ // We try to spread the load on apiserver by setting timeouts for
+-// watch requests - it is random in [minWatchTimeout, 2*minWatchTimeout].
++// watch requests - it is random in [minWatchTimeout, maxWatchTimeout].
+ var defaultMinWatchTimeout = 5 * time.Minute
++var defaultMaxWatchTimeout = 10 * time.Minute
++
++// Backoff defaults for watch reconnection
++var (
++	defaultBackoffInit   = 800 * time.Millisecond
++	defaultBackoffMax    = 30 * time.Second
++	defaultBackoffReset  = 2 * time.Minute
++	defaultBackoffFactor = 2.0
++	defaultBackoffJitter = 1.0
++)
++
++func init() {
++	if v, _ := strconv.Atoi(os.Getenv("WATCH_MIN_TIMEOUT")); v > 0 {
++		defaultMinWatchTimeout = time.Duration(v) * time.Second
++	}
++	if v, _ := strconv.Atoi(os.Getenv("WATCH_MAX_TIMEOUT")); v > 0 {
++		defaultMaxWatchTimeout = time.Duration(v) * time.Second
++	}
++	if v, _ := strconv.Atoi(os.Getenv("WATCH_BACKOFF_INIT")); v > 0 {
++		defaultBackoffInit = time.Duration(v) * time.Second
++	}
++	if v, _ := strconv.Atoi(os.Getenv("WATCH_BACKOFF_MAX")); v > 0 {
++		defaultBackoffMax = time.Duration(v) * time.Second
++	}
++	if v, _ := strconv.Atoi(os.Getenv("WATCH_BACKOFF_RESET")); v > 0 {
++		defaultBackoffReset = time.Duration(v) * time.Second
++	}
++	if v, _ := strconv.ParseFloat(os.Getenv("WATCH_BACKOFF_FACTOR"), 64); v > 0 {
++		defaultBackoffFactor = v
++	}
++	if v, _ := strconv.ParseFloat(os.Getenv("WATCH_BACKOFF_JITTER"), 64); v >= 0 {
++		defaultBackoffJitter = v
++	}
++}
+ 
+ // ReflectorStore is the subset of cache.Store that the reflector uses
+ type ReflectorStore interface {
+@@ -108,6 +144,8 @@ type Reflector struct {
+ 	resyncPeriod   time.Duration
+ 	// minWatchTimeout defines the minimum timeout for watch requests.
+ 	minWatchTimeout time.Duration
++	// maxWatchTimeout defines the maximum timeout for watch requests.
++	maxWatchTimeout time.Duration
+ 	// clock allows tests to manipulate time
+ 	clock clock.Clock
+ 	// paginatedResult defines whether pagination should be forced for list calls.
+@@ -246,6 +284,9 @@ type ReflectorOptions struct {
+ 	// However, values lower than 5m will not be honored to avoid negative performance impact on controlplane.
+ 	MinWatchTimeout time.Duration
+ 
++	// MaxWatchTimeout, if non-zero, defines the maximum timeout for watch requests send to kube-apiserver.
++	MaxWatchTimeout time.Duration
++
+ 	// Clock allows tests to control time. If unset defaults to clock.RealClock{}
+ 	Clock clock.Clock
+ }
+@@ -269,17 +310,19 @@ func NewReflectorWithOptions(lw ListerWatcher, expectedType interface{}, store R
+ 	if options.MinWatchTimeout > defaultMinWatchTimeout {
+ 		minWatchTimeout = options.MinWatchTimeout
+ 	}
++	maxWatchTimeout := defaultMaxWatchTimeout
++	if options.MaxWatchTimeout > defaultMaxWatchTimeout {
++		maxWatchTimeout = options.MaxWatchTimeout
++	}
+ 	r := &Reflector{
+ 		name:            options.Name,
+ 		resyncPeriod:    options.ResyncPeriod,
+ 		minWatchTimeout: minWatchTimeout,
++		maxWatchTimeout: maxWatchTimeout,
+ 		typeDescription: options.TypeDescription,
+ 		listerWatcher:   ToListerWatcherWithContext(lw),
+ 		store:           store,
+-		// We used to make the call every 1sec (1 QPS), the goal here is to achieve ~98% traffic reduction when
+-		// API server is not healthy. With these parameters, backoff will stop at [30,60) sec interval which is
+-		// 0.22 QPS. If we don't backoff for 2min, assume API server is healthy and we reset the backoff.
+-		backoffManager:    wait.NewExponentialBackoffManager(800*time.Millisecond, 30*time.Second, 2*time.Minute, 2.0, 1.0, reflectorClock),
++		backoffManager:    wait.NewExponentialBackoffManager(defaultBackoffInit, defaultBackoffMax, defaultBackoffReset, defaultBackoffFactor, defaultBackoffJitter, reflectorClock),
+ 		clock:             reflectorClock,
+ 		watchErrorHandler: WatchErrorHandlerWithContext(DefaultWatchErrorHandler),
+ 		expectedType:      reflect.TypeOf(expectedType),
+@@ -522,7 +565,7 @@ func (r *Reflector) watch(ctx context.Context, w watch.Interface, resyncerrc cha
+ 		start := r.clock.Now()
+ 
+ 		if w == nil {
+-			timeoutSeconds := int64(r.minWatchTimeout.Seconds() * (rand.Float64() + 1.0))
++			timeoutSeconds := int64(r.minWatchTimeout.Seconds() + rand.Float64()*(r.maxWatchTimeout.Seconds()-r.minWatchTimeout.Seconds()))
+ 			options := metav1.ListOptions{
+ 				ResourceVersion: r.LastSyncResourceVersion(),
+ 				// We want to avoid situations of hanging watchers. Stop any watchers that do not
+@@ -758,7 +801,7 @@ func (r *Reflector) watchList(ctx context.Context) (watch.Interface, error) {
+ 		// TODO(#115478): large "list", slow clients, slow network, p&f
+ 		//  might slow down streaming and eventually fail.
+ 		//  maybe in such a case we should retry with an increased timeout?
+-		timeoutSeconds := int64(r.minWatchTimeout.Seconds() * (rand.Float64() + 1.0))
++		timeoutSeconds := int64(r.minWatchTimeout.Seconds() + rand.Float64()*(r.maxWatchTimeout.Seconds()-r.minWatchTimeout.Seconds()))
+ 		options := metav1.ListOptions{
+ 			ResourceVersion:      lastKnownRV,
+ 			AllowWatchBookmarks:  true,

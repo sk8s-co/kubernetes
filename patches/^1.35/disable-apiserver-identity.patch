@@ -1,0 +1,13 @@
+diff --git a/staging/src/k8s.io/apiserver/pkg/features/kube_features.go b/staging/src/k8s.io/apiserver/pkg/features/kube_features.go
+index 1234567890a..1234567890b 100644
+--- a/staging/src/k8s.io/apiserver/pkg/features/kube_features.go
++++ b/staging/src/k8s.io/apiserver/pkg/features/kube_features.go
+@@ -315,7 +315,7 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
+
+ 	APIServerIdentity: {
+ 		{Version: version.MustParse("1.20"), Default: false, PreRelease: featuregate.Alpha},
+-		{Version: version.MustParse("1.26"), Default: true, PreRelease: featuregate.Beta},
++		{Version: version.MustParse("1.26"), Default: false, PreRelease: featuregate.Beta},
+ 	},
+
+ 	APIServerTracing: {
