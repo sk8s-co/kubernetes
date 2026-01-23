@@ -25,7 +25,9 @@ Using `no-cache, private` ensures clients always revalidate with the origin serv
 
 Disabling this feature avoids the broken peer discovery mechanism entirely.
 
-**File:** `staging/src/k8s.io/apiserver/pkg/features/kube_features.go`
+**Files:**
+- `staging/src/k8s.io/apiserver/pkg/features/kube_features.go`
+- `pkg/features/kube_features.go`
 
 ## watch.patch
 
@@ -37,8 +39,12 @@ Disabling this feature avoids the broken peer discovery mechanism entirely.
 - Client-side: `WATCH_MIN_TIMEOUT`, `WATCH_MAX_TIMEOUT` control timeout range `[min, max]`
 - Client-side: `WATCH_BACKOFF_INIT`, `WATCH_BACKOFF_MAX`, `WATCH_BACKOFF_RESET` (seconds)
 - Client-side: `WATCH_BACKOFF_FACTOR`, `WATCH_BACKOFF_JITTER` (floats)
+- Client-side: `WATCH_BACKOFF_RESET_THRESHOLD` (int) - number of successful watches before backoff resets
+- Activity-based backoff reset (opt-in): when `WATCH_BACKOFF_RESET_THRESHOLD` > 0, backoff resets after N successful watches
 
 **Why:** In serverless environments, long-lived HTTP connections and aggressive reconnection are problematic. This patch allows operators to tune watch behavior via environment variables without code changes.
+
+The activity-based reset (opt-in via `WATCH_BACKOFF_RESET_THRESHOLD`) enables adaptive polling: fast reconnects when there's activity (events being received), slower polling when idle. This is useful for short-lived watches where the original time-based reset (2 minutes) would never trigger.
 
 **Defaults (original Kubernetes behavior):**
 - `WATCH_MIN_TIMEOUT`: 300 (5 minutes)
@@ -48,6 +54,17 @@ Disabling this feature avoids the broken peer discovery mechanism entirely.
 - `WATCH_BACKOFF_RESET`: 120 seconds (2 minutes)
 - `WATCH_BACKOFF_FACTOR`: 2.0
 - `WATCH_BACKOFF_JITTER`: 1.0
+- `WATCH_BACKOFF_RESET_THRESHOLD`: 0 (disabled - use time-based reset only; set to 1+ to enable activity-based reset)
+
+**Example (short watches with adaptive backoff):**
+```bash
+WATCH_MIN_TIMEOUT=2               # 2 second watches
+WATCH_MAX_TIMEOUT=2
+WATCH_BACKOFF_INIT=1              # start at 1 second between watches
+WATCH_BACKOFF_MAX=60              # grow to 60 seconds when idle
+WATCH_BACKOFF_RESET_THRESHOLD=1   # reset backoff after 1 successful watch
+```
+With these settings: fast polling when events are received, backs off to 60s gaps when no activity.
 
 **Files:**
 - `staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go`
