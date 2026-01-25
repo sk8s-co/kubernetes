@@ -1,4 +1,4 @@
-name: CI
+name: Build and Publish Patched Kubernetes
 
 on:
   push:
@@ -15,31 +15,19 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   setup:
-    runs-on: ubuntu-24.04
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      versions: ${{ steps.set-matrix.outputs.versions }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - id: set-matrix
-        run: |
-          matrix=$(yq -o=json -I=0 . .github/_versions.yaml)
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          versions=$(yq -o=json -I=0 '[.kube-version[].version]' .github/_versions.yaml)
-          echo "versions=$versions" >> "$GITHUB_OUTPUT"
+    uses: ./.github/workflows/_setup.yml
 
   build:
     needs: setup
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     runs-on: ${{ matrix.arch.runner }}
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - name: Checkout repository

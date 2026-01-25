@@ -1,0 +1,28 @@
+name: Setup Version Matrix
+
+on:
+  workflow_call:
+    outputs:
+      matrix:
+        description: "Full matrix for builds (kube-version x arch)"
+        value: ${{ jobs.setup.outputs.matrix }}
+      versions:
+        description: "List of kube versions"
+        value: ${{ jobs.setup.outputs.versions }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      versions: ${{ steps.set-matrix.outputs.versions }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - id: set-matrix
+        run: |
+          matrix=$(yq -o=json -I=0 . .github/versions.yaml)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          versions=$(yq -o=json -I=0 '[.kube-version[].version]' .github/versions.yaml)
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"

@@ -1,0 +1,50 @@
+name: Test Patches
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  setup:
+    uses: ./.github/workflows/_setup.yml
+
+  unit-tests:
+    needs: setup
+    strategy:
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+    runs-on: ${{ matrix.arch.runner }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch.suffix }}
+          pull: true
+          push: false
+          provenance: false
+          build-args: |
+            KUBE_VERSION=${{ matrix.kube-version.version }}
+            KUBE_VERSION_GO=${{ matrix.kube-version.go }}
+          tags: kubernetes:${{ matrix.kube-version.version }}-${{ github.sha }}-${{ matrix.arch.suffix }}
+          cache-from: type=gha,scope=${{ matrix.kube-version.version }}-${{ matrix.arch.suffix }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.kube-version.version }}-${{ matrix.arch.suffix }}
+
+      - name: Run Unit Tests
+        run: |
+          docker run --rm \
+            --entrypoint /bin/sh \
+            kubernetes:${{ matrix.kube-version.version }}-${{ github.sha }}-${{ matrix.arch.suffix }} \
+            -c "cd /kubernetes && make test"

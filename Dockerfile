@@ -4,9 +4,8 @@ ARG KUBE_VERSION_GO=1.25
 ARG ETCD_VERSION=3.6.6
 
 FROM quay.io/coreos/etcd:v${ETCD_VERSION} AS etcd
-FROM registry.k8s.io/kubectl:v${KUBE_VERSION}.${KUBE_VERSION_PATCH} AS kubectl
 
-FROM golang:${KUBE_VERSION_GO}-alpine AS builder
+FROM golang:${KUBE_VERSION_GO}-alpine AS patched
 ARG KUBE_VERSION_GO \
     KUBE_VERSION \
     KUBE_VERSION_PATCH
@@ -21,18 +20,18 @@ COPY patches/ /patches/
 RUN set -e && \
     current="${KUBE_VERSION}.${KUBE_VERSION_PATCH}" && \
     for dir in /patches/*/; do \
-        [ -d "$dir" ] || continue; \
-        range=$(basename "$dir") && \
-        if semver -r "$range" "$current" >/dev/null 2>&1; then \
-            for patch in "$dir"*.patch; do \
-                [ -f "$patch" ] || continue; \
-                echo "Applying patch: $patch (range: $range)" && \
-                git apply --verbose --check "$patch" && \
-                git apply --verbose "$patch"; \
-            done; \
-        else \
-            echo "Skipping patches in $dir (range $range does not match $current)"; \
-        fi; \
+    [ -d "$dir" ] || continue; \
+    range=$(basename "$dir") && \
+    if semver -r "$range" "$current" >/dev/null 2>&1; then \
+    for patch in "$dir"*.patch; do \
+    [ -f "$patch" ] || continue; \
+    echo "Applying patch: $patch (range: $range)" && \
+    git apply --verbose --check "$patch" && \
+    git apply --verbose "$patch"; \
+    done; \
+    else \
+    echo "Skipping patches in $dir (range $range does not match $current)"; \
+    fi; \
     done && \
     echo "=== Applied patches ===" && \
     git diff HEAD && \
@@ -40,33 +39,40 @@ RUN set -e && \
     git config user.name "Build" && \
     git add -A && git commit -m "Apply patches"
 
-FROM builder AS kube-apiserver
+FROM patched AS kube-apiserver
 ARG KUBE_VERSION
 ENV KUBE_VERSION=${KUBE_VERSION}
 RUN --mount=type=cache,id=go-${KUBE_VERSION},target=/go \
     CGO_ENABLED=0 make all WHAT=cmd/kube-apiserver KUBE_STATIC_OVERRIDES=kube-apiserver && \
     mv /kubernetes/_output/local/go/bin/kube-apiserver /usr/local/bin/kube-apiserver
 
-FROM builder AS kube-controller-manager
+FROM patched AS kube-controller-manager
 ARG KUBE_VERSION
 ENV KUBE_VERSION=${KUBE_VERSION}
 RUN --mount=type=cache,id=go-${KUBE_VERSION},target=/go \
     CGO_ENABLED=0 make all WHAT=cmd/kube-controller-manager KUBE_STATIC_OVERRIDES=kube-controller-manager && \
     mv /kubernetes/_output/local/go/bin/kube-controller-manager /usr/local/bin/kube-controller-manager
 
-FROM builder AS kube-scheduler
+FROM patched AS kube-scheduler
 ARG KUBE_VERSION
 ENV KUBE_VERSION=${KUBE_VERSION}
 RUN --mount=type=cache,id=go-${KUBE_VERSION},target=/go \
     CGO_ENABLED=0 make all WHAT=cmd/kube-scheduler KUBE_STATIC_OVERRIDES=kube-scheduler && \
     mv /kubernetes/_output/local/go/bin/kube-scheduler /usr/local/bin/kube-scheduler
 
-FROM builder AS kubelet
+FROM patched AS kubelet
 ARG KUBE_VERSION
 ENV KUBE_VERSION=${KUBE_VERSION}
 RUN --mount=type=cache,id=go-${KUBE_VERSION},target=/go \
     CGO_ENABLED=0 make all WHAT=cmd/kubelet KUBE_STATIC_OVERRIDES=kubelet && \
     mv /kubernetes/_output/local/go/bin/kubelet /usr/local/bin/kubelet
+
+FROM patched AS kubectl
+ARG KUBE_VERSION
+ENV KUBE_VERSION=${KUBE_VERSION}
+RUN --mount=type=cache,id=go-${KUBE_VERSION},target=/go \
+    CGO_ENABLED=0 make all WHAT=cmd/kubectl KUBE_STATIC_OVERRIDES=kubectl && \
+    mv /kubernetes/_output/local/go/bin/kubectl /usr/local/bin/kubectl
 
 FROM alpine AS smoke
 COPY --from=etcd /usr/local/bin/etcd /kubernetes/etcd
@@ -74,7 +80,7 @@ COPY --from=etcd /usr/local/bin/etcdctl /kubernetes/etcdctl
 COPY --from=kube-apiserver /usr/local/bin/kube-apiserver /kubernetes/kube-apiserver
 COPY --from=kube-controller-manager /usr/local/bin/kube-controller-manager /kubernetes/kube-controller-manager
 COPY --from=kube-scheduler /usr/local/bin/kube-scheduler /kubernetes/kube-scheduler
-COPY --from=kubectl /bin/kubectl /kubernetes/kubectl
+COPY --from=kubectl /usr/local/bin/kubectl /kubernetes/kubectl
 COPY --from=kubelet /usr/local/bin/kubelet /kubernetes/kubelet
 
 RUN ["/kubernetes/etcd", "--version"]
