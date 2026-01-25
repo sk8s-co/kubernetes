@@ -28,24 +28,23 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Image for Testing
+        id: build
         uses: docker/build-push-action@v5
         with:
           target: patched
           context: .
           platforms: linux/${{ matrix.arch.suffix }}
           pull: true
-          push: false
+          load: true
           provenance: false
           build-args: |
             KUBE_VERSION=${{ matrix.kube-version.version }}
             KUBE_VERSION_GO=${{ matrix.kube-version.go }}
-          tags: kubernetes:${{ matrix.kube-version.version }}-${{ github.sha }}-${{ matrix.arch.suffix }}
           cache-from: type=gha,scope=patched-${{ matrix.kube-version.version }}-${{ matrix.arch.suffix }}
           cache-to: type=gha,mode=max,scope=patched-${{ matrix.kube-version.version }}-${{ matrix.arch.suffix }}
 
       - name: Run Unit Tests
         run: |
           docker run --rm \
-            --entrypoint /bin/sh \
-            kubernetes:${{ matrix.kube-version.version }}-${{ github.sha }}-${{ matrix.arch.suffix }} \
-            -c "cd /kubernetes && make test"
+            ${{ steps.build.outputs.imageid }} \
+            make test
