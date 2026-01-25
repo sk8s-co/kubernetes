@@ -45,7 +45,7 @@ jobs:
 
       - name: Run Tests
         run: |
-          docker run --rm \
+          docker run --rm --workdir /kubernetes \
             ${{ steps.build.outputs.imageid }}
             make test
         env:
