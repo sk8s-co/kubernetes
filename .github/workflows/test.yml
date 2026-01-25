@@ -15,7 +15,7 @@ jobs:
   setup:
     uses: ./.github/workflows/_setup.yml
 
-  unit-tests:
+  tests:
     needs: setup
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
@@ -43,8 +43,10 @@ jobs:
           cache-from: type=gha,scope=patched-${{ matrix.kube-version.version }}-${{ matrix.arch.suffix }}
           cache-to: type=gha,mode=max,scope=patched-${{ matrix.kube-version.version }}-${{ matrix.arch.suffix }}
 
-      - name: Run Unit Tests
+      - name: Run Tests
         run: |
           docker run --rm \
-            ${{ steps.build.outputs.imageid }} \
-            CGO_ENABLED=1 make test
+            ${{ steps.build.outputs.imageid }}
+            make test
+        env:
+          CGO_ENABLED: "1"
