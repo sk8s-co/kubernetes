@@ -15,9 +15,6 @@ ENV KUBE_VERSION_GO=${KUBE_VERSION_GO} \
 
 RUN apk add --no-cache git make bash npm jq gcc musl-dev coreutils 
 RUN npm install -g semver@7
-# Pre-install test tools
-RUN go install gotest.tools/gotestsum@latest && \
-    go build -o /go/bin/prune-junit-xml ./cmd/prune-junit-xml
 
 RUN git clone https://github.com/kubernetes/kubernetes.git -b v${KUBE_VERSION}.${KUBE_VERSION_PATCH} --depth=1 /kubernetes
 WORKDIR /kubernetes
