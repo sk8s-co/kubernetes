@@ -74,3 +74,32 @@ With these settings: fast polling when events are received, backs off to 60s gap
 - `staging/src/k8s.io/client-go/tools/cache/reflector_test.go`
 - `staging/src/k8s.io/apimachinery/pkg/util/wait/backoff.go`
 - `staging/src/k8s.io/apimachinery/pkg/util/wait/wait_test.go`
+
+## shared-etcd-client.patch
+
+**Versions:** `^1.35` (>=1.35.0 <2.0.0)
+
+**Changes:**
+- Adds reference-counted etcd client sharing across storage backends
+- Multiple storage backends with the same transport config share a single client
+- Reduces TCP connections from ~164 (one per resource type) to 1 per unique transport
+
+**Why:** The kube-apiserver creates a separate etcd client for each storage backend (~164 for built-in resource types, more with CRDs). During startup, all these clients attempt to connect simultaneously, causing a "thundering herd" problem. This manifests as:
+
+- ~60 connection failures with errors like `"operation was canceled"` or `"use of closed network connection"`
+- 100 retry warning messages per failed connection (hardcoded in etcd client)
+- ~2-3 second startup delay while connections retry and stabilize
+
+In serverless environments (e.g., Lambda), this startup overhead is significant for cold starts.
+
+This patch implements client sharing using the same reference-counting pattern as the existing compactor caching. Storage backends with identical transport configurations (same etcd servers, TLS settings) now share a single underlying connection.
+
+**Impact:**
+- Reduces etcd connections from ~164 to 1 (or few, if using etcd-servers-overrides)
+- Eliminates connection failure warnings during startup
+- Reduces cold start latency by ~2-3 seconds
+- Reduces memory usage (each etcd client has overhead)
+
+**Related:** https://github.com/kubernetes/kubernetes/issues/111622
+
+**File:** `staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go`

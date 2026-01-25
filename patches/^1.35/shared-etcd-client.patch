@@ -1,0 +1,112 @@
+diff --git a/staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go b/staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go
+index 53fc9f97a70..4e685d5c1b4 100644
+--- a/staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go
++++ b/staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go
+@@ -363,6 +363,16 @@ type runningCompactor struct {
+ 	refs      int
+ }
+ 
++// sharedClient holds a reference-counted etcd client that can be shared
++// across multiple storage backends with the same transport configuration.
++// This significantly reduces the number of TCP connections to etcd during
++// API server startup (from ~164 per resource type to 1 per unique transport).
++// See https://github.com/kubernetes/kubernetes/issues/111622
++type sharedClient struct {
++	client *kubernetes.Client
++	refs   int
++}
++
+ var (
+ 	// compactorsMu guards access to compactors map
+ 	compactorsMu sync.Mutex
+@@ -370,8 +380,50 @@ var (
+ 	// dbMetricsMonitorsMu guards access to dbMetricsMonitors map
+ 	dbMetricsMonitorsMu sync.Mutex
+ 	dbMetricsMonitors   map[string]struct{}
++	// sharedClientsMu guards access to sharedClients map
++	sharedClientsMu sync.Mutex
++	sharedClients   = map[string]*sharedClient{}
+ )
+ 
++// getOrCreateETCD3Client returns a shared etcd client for the given transport config.
++// Multiple storage backends with the same transport config will share a single client,
++// reducing connection overhead during startup. The returned release function must be
++// called when the client is no longer needed.
++func getOrCreateETCD3Client(c storagebackend.TransportConfig) (*kubernetes.Client, func(), error) {
++	sharedClientsMu.Lock()
++	defer sharedClientsMu.Unlock()
++
++	key := fmt.Sprintf("%v", c) // gives: {[server1 server2] keyFile certFile caFile}
++	if sc, found := sharedClients[key]; found {
++		sc.refs++
++		return sc.client, func() { releaseSharedClient(key) }, nil
++	}
++
++	client, err := newETCD3Client(c)
++	if err != nil {
++		return nil, nil, err
++	}
++
++	// Decorate the KV instance so we can track etcd latency per request.
++	// This only happens once per shared client.
++	client.KV = etcd3.NewETCDLatencyTracker(client.KV)
++
++	sharedClients[key] = &sharedClient{client: client, refs: 1}
++	return client, func() { releaseSharedClient(key) }, nil
++}
++
++func releaseSharedClient(key string) {
++	sharedClientsMu.Lock()
++	defer sharedClientsMu.Unlock()
++
++	sc := sharedClients[key]
++	sc.refs--
++	if sc.refs == 0 {
++		_ = sc.client.Close()
++		delete(sharedClients, key)
++	}
++}
++
+ // startCompactorOnce start one compactor per transport. If the interval get smaller on repeated calls, the
+ // compactor is replaced. A destroy func is returned. If all destroy funcs with the same transport are called,
+ // the compactor is stopped.
+@@ -429,19 +481,16 @@ func newETCD3Storage(c storagebackend.ConfigForResource, newFunc, newListFunc fu
+ 		return nil, nil, err
+ 	}
+ 
+-	client, err := newETCD3Client(c.Transport)
++	client, releaseClient, err := getOrCreateETCD3Client(c.Transport)
+ 	if err != nil {
+ 		stopCompactor()
+ 		return nil, nil, err
+ 	}
+ 
+-	// decorate the KV instance so we can track etcd latency per request.
+-	client.KV = etcd3.NewETCDLatencyTracker(client.KV)
+-
+ 	stopDBSizeMonitor, err := startDBSizeMonitorPerEndpoint(client.Client, c.DBMetricPollInterval)
+ 	if err != nil {
+ 		stopCompactor()
+-		_ = client.Close()
++		releaseClient()
+ 		return nil, nil, err
+ 	}
+ 
+@@ -461,7 +510,7 @@ func newETCD3Storage(c storagebackend.ConfigForResource, newFunc, newListFunc fu
+ 	if err != nil {
+ 		stopCompactor()
+ 		stopDBSizeMonitor()
+-		_ = client.Close()
++		releaseClient()
+ 		return nil, nil, err
+ 	}
+ 	var once sync.Once
+@@ -473,7 +522,7 @@ func newETCD3Storage(c storagebackend.ConfigForResource, newFunc, newListFunc fu
+ 			stopCompactor()
+ 			stopDBSizeMonitor()
+ 			store.Close()
+-			_ = client.Close()
++			releaseClient()
+ 		})
+ 	}
+ 	var storage storage.Interface = store
