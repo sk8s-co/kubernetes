@@ -268,11 +268,11 @@ index af2c7a22d07..1f13668bca2 100644
 +func (r *Reflector) resetBackoff(ctx context.Context) {
 +	r.backoffResetCount++
 +	if defaultBackoffResetThreshold != 0 && r.backoffResetCount > defaultBackoffResetThreshold {
-+		klog.FromContext(ctx).V(4).Info("Resetting backoff manager", "reflector", r.name, "type", r.typeDescription, "resetCount", r.backoffResetCount)
++		klog.FromContext(ctx).V(3).Info("Resetting backoff manager", "reflector", r.name, "type", r.typeDescription, "resetCount", r.backoffResetCount)
 +		r.backoffManager = wait.NewExponentialBackoffManager(defaultBackoffInit, defaultBackoffMax, defaultBackoffReset, defaultBackoffFactor, defaultBackoffJitter, r.clock).WithIdentifier(r.name + "/" + r.typeDescription)
 +		r.backoffResetCount = 0
 +	} else {
-+		klog.FromContext(ctx).V(4).Info("Not resetting backoff manager", "reflector", r.name, "type", r.typeDescription, "resetCount", r.backoffResetCount)
++		klog.FromContext(ctx).V(3).Info("Not resetting backoff manager", "reflector", r.name, "type", r.typeDescription, "resetCount", r.backoffResetCount)
 +	}
 +}
 +
@@ -310,7 +310,7 @@ index af2c7a22d07..1f13668bca2 100644
  	watchListBookmarkReceived := false
  	eventCount := 0
  	logger := klog.FromContext(ctx)
-+	klog.FromContext(ctx).V(4).Info("Watch open", "reflector", name, "type", expectedTypeName)
++	klog.FromContext(ctx).V(2).Info("Watch open", "reflector", name, "type", expectedTypeName)
  	initialEventsEndBookmarkWarningTicker := newInitialEventsEndBookmarkTicker(logger, name, clock, start, exitOnWatchListBookmarkReceived)
  	defer initialEventsEndBookmarkWarningTicker.Stop()
  	stopWatcher := true
