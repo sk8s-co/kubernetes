@@ -39,14 +39,12 @@ Disabling this feature avoids the broken peer discovery mechanism entirely.
 - Client-side: `WATCH_MIN_TIMEOUT`, `WATCH_MAX_TIMEOUT` control timeout range `[min, max]`
 - Client-side: `WATCH_BACKOFF_INIT`, `WATCH_BACKOFF_MAX`, `WATCH_BACKOFF_RESET` (seconds)
 - Client-side: `WATCH_BACKOFF_FACTOR`, `WATCH_BACKOFF_JITTER` (floats)
-- Client-side: `WATCH_BACKOFF_RESET_THRESHOLD` (int) - number of successful watches before backoff resets
-- Activity-based backoff reset (opt-in): when `WATCH_BACKOFF_RESET_THRESHOLD` > 0, backoff resets after N successful watches
-- V(4) logging for watch open/close, backoff timer create/reset, backoff step duration
-- `BackoffManager.WithIdentifier()` method to set identifier for backoff logging
+- Client-side: `WATCH_BACKOFF_ON_EMPTY` (bool) - trigger backoff when watch closes with no events
+- V(2) logging for watch open/close
 
 **Why:** In serverless environments, long-lived HTTP connections and aggressive reconnection are problematic. This patch allows operators to tune watch behavior via environment variables without code changes.
 
-The activity-based reset (opt-in via `WATCH_BACKOFF_RESET_THRESHOLD`) enables adaptive polling: fast reconnects when there's activity (events being received), slower polling when idle. This is useful for short-lived watches where the original time-based reset (2 minutes) would never trigger.
+The `WATCH_BACKOFF_ON_EMPTY` option addresses a specific serverless issue: when watches return no events (common for idle resources), the default behavior is to immediately reconnect. With short watch timeouts, this causes rapid polling. Enabling this option treats empty watches like a 429 response - backing off before reconnecting.
 
 **Defaults (original Kubernetes behavior):**
 - `WATCH_MIN_TIMEOUT`: 300 (5 minutes)
@@ -56,24 +54,21 @@ The activity-based reset (opt-in via `WATCH_BACKOFF_RESET_THRESHOLD`) enables ad
 - `WATCH_BACKOFF_RESET`: 120 seconds (2 minutes)
 - `WATCH_BACKOFF_FACTOR`: 2.0
 - `WATCH_BACKOFF_JITTER`: 1.0
-- `WATCH_BACKOFF_RESET_THRESHOLD`: 0 (disabled - use time-based reset only; set to 1+ to enable activity-based reset)
+- `WATCH_BACKOFF_ON_EMPTY`: false (disabled)
 
-**Example (short watches with adaptive backoff):**
+**Example (short watches with backoff on empty):**
 ```bash
-WATCH_MIN_TIMEOUT=2               # 2 second watches
-WATCH_MAX_TIMEOUT=2
+WATCH_MIN_TIMEOUT=300             # 5 minute watches
+WATCH_MAX_TIMEOUT=600             # 10 minute watches
 WATCH_BACKOFF_INIT=1              # start at 1 second between watches
-WATCH_BACKOFF_MAX=60              # grow to 60 seconds when idle
-WATCH_BACKOFF_RESET_THRESHOLD=1   # reset backoff after 1 successful watch
+WATCH_BACKOFF_MAX=30              # grow to 30 seconds when idle
+WATCH_BACKOFF_ON_EMPTY=true       # backoff when no events received
 ```
-With these settings: fast polling when events are received, backs off to 60s gaps when no activity.
+With these settings: immediate reconnect when events are received, backs off when watches close with no activity.
 
 **Files:**
 - `staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go`
 - `staging/src/k8s.io/client-go/tools/cache/reflector.go`
-- `staging/src/k8s.io/client-go/tools/cache/reflector_test.go`
-- `staging/src/k8s.io/apimachinery/pkg/util/wait/backoff.go`
-- `staging/src/k8s.io/apimachinery/pkg/util/wait/wait_test.go`
 
 ## shared-etcd-client.patch
 
