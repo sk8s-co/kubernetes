@@ -109,3 +109,27 @@ This patch implements client sharing using the same reference-counting pattern a
 **Related:** https://github.com/kubernetes/kubernetes/issues/111622
 
 **File:** `staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go`
+
+## kubelet-external-dns.patch
+
+**Versions:** `^1.35` (>=1.35.0 <2.0.0)
+
+**Changes:**
+- Adds `KUBELET_EXTERNAL_DNS` environment variable support to kubelet
+- Registers an `ExternalDNS` address in `node.Status.Addresses`
+
+**Why:** In serverless/hybrid environments, the API server and kubelets may be on different networks. Features like `kubectl logs` and `kubectl exec` require the API server to connect back to the kubelet. When the kubelet is behind a tunnel (e.g., cloudflared), it needs to advertise a reachable hostname.
+
+Kubernetes provides `ExternalDNS` as an address type for this purpose, but only cloud providers can set it. This patch allows operators to set it via environment variable, enabling connectivity through tunnels without requiring a cloud provider integration.
+
+**Usage:**
+```bash
+# On kubelet (node)
+export KUBELET_EXTERNAL_DNS="my-node.trycloudflare.com"
+
+# On API server
+kube-apiserver --kubelet-preferred-address-types=ExternalDNS,InternalIP,Hostname \
+               --kubelet-port=443  # if tunnel uses 443
+```
+
+**File:** `pkg/kubelet/nodestatus/setters.go`
