@@ -34,9 +34,8 @@ Disabling this feature avoids the broken peer discovery mechanism entirely.
 **Versions:** `^1.35` (>=1.35.0 <2.0.0)
 
 **Changes:**
-- Adds environment variables for watch timeout and backoff configuration
-- Server-side: `WATCH_MAX_TIMEOUT` caps incoming watch requests
-- Client-side: `WATCH_MIN_TIMEOUT`, `WATCH_MAX_TIMEOUT` control timeout range `[min, max]`
+- Server-side (get.go): `REQUEST_MIN_TIMEOUT`, `REQUEST_MAX_TIMEOUT` enforce timeout bounds on all watch requests (clamps client-specified timeouts)
+- Client-side (reflector.go): `WATCH_MIN_TIMEOUT`, `WATCH_MAX_TIMEOUT` control outgoing watch timeout range `[min, max]`
 - Client-side: `WATCH_BACKOFF_INIT`, `WATCH_BACKOFF_MAX`, `WATCH_BACKOFF_RESET` (seconds)
 - Client-side: `WATCH_BACKOFF_FACTOR`, `WATCH_BACKOFF_JITTER` (floats)
 - Client-side: `WATCH_BACKOFF_ON_EMPTY` (bool) - trigger backoff when watch closes with no events
@@ -44,9 +43,15 @@ Disabling this feature avoids the broken peer discovery mechanism entirely.
 
 **Why:** In serverless environments, long-lived HTTP connections and aggressive reconnection are problematic. This patch allows operators to tune watch behavior via environment variables without code changes.
 
-The `WATCH_BACKOFF_ON_EMPTY` option addresses a specific serverless issue: when watches return no events (common for idle resources), the default behavior is to immediately reconnect. With short watch timeouts, this causes rapid polling. Enabling this option treats empty watches like a 429 response - backing off before reconnecting.
+The server-side `REQUEST_MIN_TIMEOUT` / `REQUEST_MAX_TIMEOUT` enforce limits regardless of what clients (like k9s, kubectl, etc.) request. This ensures external clients can't hold connections open longer than the server allows.
 
-**Defaults (original Kubernetes behavior):**
+The client-side `WATCH_BACKOFF_ON_EMPTY` option addresses a specific serverless issue: when watches return no events (common for idle resources), the default behavior is to immediately reconnect. With short watch timeouts, this causes rapid polling. Enabling this option treats empty watches like a 429 response - backing off before reconnecting.
+
+**Server-side defaults:**
+- `REQUEST_MIN_TIMEOUT`: 0 (disabled - no minimum enforcement)
+- `REQUEST_MAX_TIMEOUT`: 0 (disabled - no maximum enforcement)
+
+**Client-side defaults (original Kubernetes behavior):**
 - `WATCH_MIN_TIMEOUT`: 300 (5 minutes)
 - `WATCH_MAX_TIMEOUT`: 600 (10 minutes)
 - `WATCH_BACKOFF_INIT`: 0.8 seconds (800ms - use 1 for 1 second minimum)
@@ -56,15 +61,21 @@ The `WATCH_BACKOFF_ON_EMPTY` option addresses a specific serverless issue: when 
 - `WATCH_BACKOFF_JITTER`: 1.0
 - `WATCH_BACKOFF_ON_EMPTY`: false (disabled)
 
-**Example (short watches with backoff on empty):**
+**Example (server enforces max 60s watches):**
 ```bash
-WATCH_MIN_TIMEOUT=300             # 5 minute watches
-WATCH_MAX_TIMEOUT=600             # 10 minute watches
+# On API server
+REQUEST_MAX_TIMEOUT=60            # cap all watches at 60 seconds
+```
+
+**Example (client short watches with backoff on empty):**
+```bash
+# On kubelet/controllers
+WATCH_MIN_TIMEOUT=2               # 2 second watches
+WATCH_MAX_TIMEOUT=4               # 4 second watches
 WATCH_BACKOFF_INIT=1              # start at 1 second between watches
 WATCH_BACKOFF_MAX=30              # grow to 30 seconds when idle
 WATCH_BACKOFF_ON_EMPTY=true       # backoff when no events received
 ```
-With these settings: immediate reconnect when events are received, backs off when watches close with no activity.
 
 **Files:**
 - `staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go`

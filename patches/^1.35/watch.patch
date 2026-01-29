@@ -1,5 +1,5 @@
 diff --git a/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go b/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go
-index eb52baf1946..d5ab57b233c 100644
+index eb52baf1946..21c63242f09 100644
 --- a/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go
 +++ b/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go
 @@ -22,6 +22,8 @@ import (
@@ -10,15 +10,41 @@ index eb52baf1946..d5ab57b233c 100644
 +	"strconv"
  	"strings"
  	"time"
- 
-@@ -259,6 +261,9 @@ func ListResource(r rest.Lister, rw rest.Watcher, scope *RequestScope, forceWatc
+
+@@ -47,6 +49,21 @@ import (
+ 	"k8s.io/klog/v2"
+ )
+
++// Request timeout enforcement (0 = disabled)
++var (
++	requestMinTimeout time.Duration
++	requestMaxTimeout time.Duration
++)
++
++func init() {
++	if v, _ := strconv.Atoi(os.Getenv("REQUEST_MIN_TIMEOUT")); v > 0 {
++		requestMinTimeout = time.Duration(v) * time.Second
++	}
++	if v, _ := strconv.Atoi(os.Getenv("REQUEST_MAX_TIMEOUT")); v > 0 {
++		requestMaxTimeout = time.Duration(v) * time.Second
++	}
++}
++
+ // getterFunc performs a get request with the given context and object name. The request
+ // may be used to deserialize an options object to pass to the getter.
+ type getterFunc func(ctx context.Context, name string, req *http.Request) (runtime.Object, error)
+@@ -259,6 +276,13 @@ func ListResource(r rest.Lister, rw rest.Watcher, scope *RequestScope, forceWatc
  			if timeout == 0 && minRequestTimeout > 0 {
  				timeout = time.Duration(float64(minRequestTimeout) * (rand.Float64() + 1.0))
  			}
-+			if max, _ := strconv.Atoi(os.Getenv("WATCH_MAX_TIMEOUT")); max > 0 && (timeout == 0 || timeout > time.Duration(max)*time.Second) {
-+				timeout = time.Duration(max) * time.Second
++			// Clamp to [requestMinTimeout, requestMaxTimeout] if set
++			if requestMinTimeout > 0 && timeout < requestMinTimeout {
++				timeout = requestMinTimeout
 +			}
- 
++			if requestMaxTimeout > 0 && timeout > requestMaxTimeout {
++				timeout = requestMaxTimeout
++			}
+
  			klog.V(3).InfoS("Starting watch", "path", req.URL.Path, "resourceVersion", opts.ResourceVersion, "labels", opts.LabelSelector, "fields", opts.FieldSelector, "timeout", timeout)
  			ctx, cancel := context.WithTimeout(ctx, timeout)
 diff --git a/staging/src/k8s.io/client-go/tools/cache/reflector.go b/staging/src/k8s.io/client-go/tools/cache/reflector.go
@@ -37,7 +63,7 @@ index af2c7a22d07..e27dcd349c4 100644
  	"time"
 @@ -51,8 +53,46 @@ import (
  const defaultExpectedTypeName = "<unspecified>"
- 
+
  // We try to spread the load on apiserver by setting timeouts for
 -// watch requests - it is random in [minWatchTimeout, 2*minWatchTimeout].
 +// watch requests - it is random in [minWatchTimeout, maxWatchTimeout].
@@ -80,7 +106,7 @@ index af2c7a22d07..e27dcd349c4 100644
 +		backoffOnEmpty = v
 +	}
 +}
- 
+
  // ReflectorStore is the subset of cache.Store that the reflector uses
  type ReflectorStore interface {
 @@ -108,6 +148,8 @@ type Reflector struct {
@@ -95,7 +121,7 @@ index af2c7a22d07..e27dcd349c4 100644
 @@ -246,6 +288,9 @@ type ReflectorOptions struct {
  	// However, values lower than 5m will not be honored to avoid negative performance impact on controlplane.
  	MinWatchTimeout time.Duration
- 
+
 +	// MaxWatchTimeout, if non-zero, defines the maximum timeout for watch requests send to kube-apiserver.
 +	MaxWatchTimeout time.Duration
 +
@@ -128,7 +154,7 @@ index af2c7a22d07..e27dcd349c4 100644
  		expectedType:      reflect.TypeOf(expectedType),
 @@ -522,7 +572,7 @@ func (r *Reflector) watch(ctx context.Context, w watch.Interface, resyncerrc cha
  		start := r.clock.Now()
- 
+
  		if w == nil {
 -			timeoutSeconds := int64(r.minWatchTimeout.Seconds() * (rand.Float64() + 1.0))
 +			timeoutSeconds := int64(r.minWatchTimeout.Seconds() + rand.Float64()*(r.maxWatchTimeout.Seconds()-r.minWatchTimeout.Seconds()))
@@ -176,11 +202,11 @@ index af2c7a22d07..e27dcd349c4 100644
 +	}
  	return watchListBookmarkReceived, nil
  }
- 
+
 @@ -1057,6 +1119,11 @@ func isExpiredError(err error) bool {
  	return apierrors.IsResourceExpired(err) || apierrors.IsGone(err)
  }
- 
+
 +func isEmptyWatchError(err error) bool {
 +	var emptyErr *EmptyWatchError
 +	return errors.As(err, &emptyErr)
@@ -192,7 +218,7 @@ index af2c7a22d07..e27dcd349c4 100644
 @@ -1202,6 +1269,18 @@ func (e *VeryShortWatchError) Error() string {
  		"watch lasted less than a second and no items received", e.Name)
  }
- 
+
 +// EmptyWatchError is returned when the watch result channel is closed
 +// without having sent any events, if WATCH_BACKOFF_ON_EMPTY is enabled.
 +type EmptyWatchError struct {
