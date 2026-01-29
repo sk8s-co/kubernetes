@@ -115,21 +115,21 @@ This patch implements client sharing using the same reference-counting pattern a
 **Versions:** `^1.35` (>=1.35.0 <2.0.0)
 
 **Changes:**
-- Adds `KUBELET_EXTERNAL_DNS` environment variable support to kubelet
-- Registers an `ExternalDNS` address in `node.Status.Addresses`
+- Adds `KUBELET_EXTERNAL_DNS` environment variable to register an `ExternalDNS` address in `node.Status.Addresses`
+- Adds `KUBELET_EXTERNAL_PORT` environment variable to override the port in `node.Status.DaemonEndpoints.KubeletEndpoint.Port`
 
-**Why:** In serverless/hybrid environments, the API server and kubelets may be on different networks. Features like `kubectl logs` and `kubectl exec` require the API server to connect back to the kubelet. When the kubelet is behind a tunnel (e.g., cloudflared), it needs to advertise a reachable hostname.
+**Why:** In serverless/hybrid environments, the API server and kubelets may be on different networks. Features like `kubectl logs` and `kubectl exec` require the API server to connect back to the kubelet. When the kubelet is behind a tunnel (e.g., cloudflared), it needs to advertise a reachable hostname and port.
 
-Kubernetes provides `ExternalDNS` as an address type for this purpose, but only cloud providers can set it. This patch allows operators to set it via environment variable, enabling connectivity through tunnels without requiring a cloud provider integration.
+Kubernetes provides `ExternalDNS` as an address type for this purpose, but only cloud providers can set it. The kubelet also reports its listening port, but there's no way to advertise a different port (e.g., tunnel port 443 vs actual listening port). This patch allows operators to decouple the advertised address and port from the actual listening configuration.
 
 **Usage:**
 ```bash
 # On kubelet (node)
 export KUBELET_EXTERNAL_DNS="my-node.trycloudflare.com"
+export KUBELET_EXTERNAL_PORT="443"
 
 # On API server
-kube-apiserver --kubelet-preferred-address-types=ExternalDNS,InternalIP,Hostname \
-               --kubelet-port=443  # if tunnel uses 443
+kube-apiserver --kubelet-preferred-address-types=ExternalDNS
 ```
 
 **File:** `pkg/kubelet/nodestatus/setters.go`
