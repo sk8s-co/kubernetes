@@ -1,0 +1,13 @@
+diff --git a/pkg/registry/core/pod/rest/subresources.go b/pkg/registry/core/pod/rest/subresources.go
+index e6ffa3408ff..fab599a1ce9 100644
+--- a/pkg/registry/core/pod/rest/subresources.go
++++ b/pkg/registry/core/pod/rest/subresources.go
+@@ -193,7 +193,7 @@ func (r *ExecREST) Connect(ctx context.Context, name string, opts runtime.Object
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	handler := newThrottledUpgradeAwareProxyHandler(location, transport, false, true, responder)
++	handler := newThrottledUpgradeAwareProxyHandler(location, transport, false, false, responder)
+ 	if utilfeature.DefaultFeatureGate.Enabled(features.TranslateStreamCloseWebsocketRequests) {
+ 		// Wrap the upgrade aware handler to implement stream translation
+ 		// for WebSocket/V5 upgrade requests.

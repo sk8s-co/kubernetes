@@ -133,3 +133,28 @@ kube-apiserver --kubelet-preferred-address-types=ExternalDNS
 ```
 
 **File:** `pkg/kubelet/nodestatus/setters.go`
+
+## exec-no-upgrade-required.patch
+
+**Versions:** `^1.35` (>=1.35.0 <2.0.0)
+
+**Changes:**
+- Sets `upgradeRequired` to `false` for pod exec requests
+
+**Why:** In the default Kubernetes flow, the API server proxies exec requests to the kubelet and requires an HTTP upgrade (SPDY/WebSocket). This fails in serverless environments where the API server can't maintain long-lived upgraded connections.
+
+By setting `upgradeRequired=false`, the API server allows the request to be handled as a normal proxy request, enabling alternative patterns like redirecting the client directly to the kubelet's public endpoint (via cloudflared tunnel). This lets the kubelet handle the exec upgrade directly with the client.
+
+**Flow (before):**
+```
+kubectl exec → API server → [UPGRADE REQUIRED] → fails in Lambda
+```
+
+**Flow (after):**
+```
+kubectl exec → API server → proxy/redirect → kubelet (handles upgrade directly)
+```
+
+**TODO:** Make this conditional — only set `upgradeRequired=false` when the target kubelet's address type is `ExternalDNS`. This would preserve normal behavior for internal kubelets while enabling redirect for tunneled nodes.
+
+**File:** `pkg/registry/core/pod/rest/subresources.go`
