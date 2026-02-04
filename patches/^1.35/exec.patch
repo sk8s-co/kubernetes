@@ -78,6 +78,36 @@ index a7c8d897dc8..4fac7fd481a 100644
  	return false
  }
  
+diff --git a/staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go b/staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go
+index d30ae2fa3dc..e6979dd8a76 100644
+--- a/staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go
++++ b/staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go
+@@ -86,7 +86,9 @@ func NewResponseUpgraderWithPings(pingPeriod time.Duration) httpstream.ResponseU
+ func (u responseUpgrader) UpgradeResponse(w http.ResponseWriter, req *http.Request, newStreamHandler httpstream.NewStreamHandler) httpstream.Connection {
+ 	connectionHeader := strings.ToLower(req.Header.Get(httpstream.HeaderConnection))
+ 	upgradeHeader := strings.ToLower(req.Header.Get(httpstream.HeaderUpgrade))
+-	if !strings.Contains(connectionHeader, strings.ToLower(httpstream.HeaderUpgrade)) || !strings.Contains(upgradeHeader, strings.ToLower(HeaderSpdy31)) {
++	hasUpgradeHeaders := strings.Contains(connectionHeader, strings.ToLower(httpstream.HeaderUpgrade)) && strings.Contains(upgradeHeader, strings.ToLower(HeaderSpdy31))
++	hasProtocolVersion := req.Header[http.CanonicalHeaderKey(httpstream.HeaderProtocolVersion)] != nil
++	if !hasUpgradeHeaders && !hasProtocolVersion {
+ 		errorMsg := fmt.Sprintf("unable to upgrade: missing upgrade headers in request: %#v", req.Header)
+ 		http.Error(w, errorMsg, http.StatusBadRequest)
+ 		return nil
+diff --git a/staging/src/k8s.io/apiserver/pkg/util/proxy/streamtunnel.go b/staging/src/k8s.io/apiserver/pkg/util/proxy/streamtunnel.go
+index 7a7b92adaf7..dcc211d14c4 100644
+--- a/staging/src/k8s.io/apiserver/pkg/util/proxy/streamtunnel.go
++++ b/staging/src/k8s.io/apiserver/pkg/util/proxy/streamtunnel.go
+@@ -327,7 +327,9 @@ func (u *tunnelingWebsocketUpgraderConn) InitializeWrite(backendResponse *http.R
+ 	if backendResponse.StatusCode == http.StatusSwitchingProtocols {
+ 		connectionHeader := strings.ToLower(backendResponse.Header.Get(httpstream.HeaderConnection))
+ 		upgradeHeader := strings.ToLower(backendResponse.Header.Get(httpstream.HeaderUpgrade))
+-		if !strings.Contains(connectionHeader, strings.ToLower(httpstream.HeaderUpgrade)) || !strings.Contains(upgradeHeader, strings.ToLower(spdy.HeaderSpdy31)) {
++		hasUpgradeHeaders := strings.Contains(connectionHeader, strings.ToLower(httpstream.HeaderUpgrade)) && strings.Contains(upgradeHeader, strings.ToLower(spdy.HeaderSpdy31))
++		hasProtocolVersion := backendResponse.Header[http.CanonicalHeaderKey(httpstream.HeaderProtocolVersion)] != nil
++		if !hasUpgradeHeaders && !hasProtocolVersion {
+ 			klog.Errorf("unable to upgrade: missing upgrade headers in response: %#v", backendResponse.Header)
+ 			u.err = fmt.Errorf("unable to upgrade: missing upgrade headers in response")
+ 			metrics.IncStreamTunnelRequest(context.Background(), strconv.Itoa(http.StatusInternalServerError))
 diff --git a/staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go b/staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go
 index 185a3db6273..d0127c4e425 100644
 --- a/staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go

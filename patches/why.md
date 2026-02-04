@@ -139,30 +139,46 @@ kube-apiserver --kubelet-preferred-address-types=ExternalDNS
 **Versions:** `^1.35` (>=1.35.0 <2.0.0)
 
 **Changes:**
-- Sets `upgradeRequired` to `false` for pod exec requests
-- Sets `UseLocationHost` to `true` for all proxy handlers
-- Kubelet accepts both param styles for exec stream options
+- `IsUpgradeRequest()` now also returns `true` if `X-Stream-Protocol-Version` header is present (even without `Connection: Upgrade`)
+- `ExecREST.Connect` returns 307 redirect to kubelet URL instead of proxying
+- Sets `UpgradeRequired=false` and `UseLocationHost=true` on all proxy handlers (pod, node, service)
+- Kubelet accepts both param styles (`input`/`stdin`, `output`/`stdout`, `error`/`stderr`) and boolean formats via `strconv.ParseBool`
 
-**Why:** In the default Kubernetes flow, the API server proxies exec requests to the kubelet and requires an HTTP upgrade (SPDY/WebSocket). This fails in serverless environments where the API server can't maintain long-lived upgraded connections.
+**Why:** In serverless environments (e.g., Lambda), the API server cannot maintain long-lived upgraded connections required for `kubectl exec`. Lambda and similar HTTP-only proxies strip `Connection: Upgrade` headers, breaking the SPDY/WebSocket upgrade handshake.
 
-By setting `upgradeRequired=false`, the API server allows the request to be handled as a normal proxy request, enabling alternative patterns like redirecting the client directly to the kubelet's public endpoint (via cloudflared tunnel). This lets the kubelet handle the exec upgrade directly with the client.
+This patch enables a redirect-based flow where the API server redirects exec requests to the kubelet's external endpoint (e.g., cloudflared tunnel). The key insight is that while `Connection: Upgrade` headers are stripped by Lambda, the `X-Stream-Protocol-Version` headers survive. By treating these headers as an upgrade indicator, the kubelet can recognize exec requests even when the standard upgrade headers are missing.
 
-`UseLocationHost=true` ensures the HTTP Host header sent to the kubelet matches the kubelet's address (e.g., `my-node.trycloudflare.com`) rather than the API server's address (e.g., `lambda-url.amazonaws.com`). Without this, cloudflared tunnels reject the request with a 403 due to Host header mismatch.
+**`X-Stream-Protocol-Version` as upgrade indicator:** kubectl sends these headers to negotiate the streaming protocol version. Lambda strips `Connection` and `Upgrade` but passes through `X-Stream-Protocol-Version`. The modified `IsUpgradeRequest()` checks for this header, allowing the upgrade path to be taken on the kubelet even when the request arrives via redirect.
 
-The kubelet's exec handler normally expects `input=1`, `output=1`, `error=1` params (translated by the API server's `ExecLocation`). However, when proxying without upgrade, the API server's `upgradeaware.go` overwrites query params with the original request params from kubectl (`stdin=true`, `stdout=true`, `stderr=true`). This patch makes the kubelet accept both param styles and boolean formats via `strconv.ParseBool`.
+**`UseLocationHost=true`:** Ensures the HTTP Host header sent to the kubelet matches the kubelet's address (e.g., `my-node.trycloudflare.com`) rather than the API server's address. Without this, cloudflared tunnels reject the request with 403 due to Host header mismatch.
+
+**Param compatibility:** The kubelet's exec handler normally expects `input=1`, `output=1`, `error=1` params (translated by the API server). When the client connects directly, it sends kubectl's params (`stdin=true`, `stdout=true`, `stderr=true`). This patch makes the kubelet accept both param names and boolean formats.
 
 **Flow (before):**
 ```
-kubectl exec → API server → [UPGRADE REQUIRED] → fails in Lambda
+kubectl exec → API server → [UPGRADE via Lambda] → fails (headers stripped)
 ```
 
 **Flow (after):**
 ```
-kubectl exec → API server → proxy/redirect → kubelet (handles upgrade directly)
+kubectl exec → API server (Lambda) → 307 redirect
+           ↓
+kubectl → kubelet (via cloudflared) → [UPGRADE directly] → success
 ```
 
-**TODO:** Make these changes conditional — only apply when the target kubelet's address type is `ExternalDNS`. This would preserve normal behavior for internal kubelets while enabling redirect for tunneled nodes.
+**Requirements:**
+- Kubelet must be accessible via external endpoint (e.g., cloudflared tunnel)
+- `--kubelet-preferred-address-types=ExternalDNS` on API server
+- `KUBELET_EXTERNAL_DNS` and `KUBELET_EXTERNAL_PORT` set on kubelet (see `kubelet-external-dns.patch`)
+- cloudflared must support WebSocket passthrough (it does)
+
+**TODO:** Make redirect conditional on `ExternalDNS` address type to preserve normal proxy behavior for internal kubelets.
 
 **Files:**
-- `pkg/registry/core/pod/rest/subresources.go`
-- `staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go`
+- `pkg/registry/core/pod/rest/subresources.go` - ExecREST returns 307 redirect
+- `pkg/registry/core/node/rest/proxy.go` - UpgradeRequired=false, UseLocationHost=true
+- `pkg/registry/core/service/proxy.go` - UpgradeRequired=false, UseLocationHost=true
+- `staging/src/k8s.io/apimachinery/pkg/util/httpstream/httpstream.go` - IsUpgradeRequest() accepts X-Stream-Protocol-Version
+- `staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go` - UpgradeResponse() accepts X-Stream-Protocol-Version
+- `staging/src/k8s.io/apiserver/pkg/util/proxy/streamtunnel.go` - Backend response validation accepts X-Stream-Protocol-Version
+- `staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go` - Accepts both param styles
