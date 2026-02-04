@@ -1,8 +1,20 @@
+diff --git a/pkg/registry/core/node/rest/proxy.go b/pkg/registry/core/node/rest/proxy.go
+index 40e6431b40b..f967bfdef87 100644
+--- a/pkg/registry/core/node/rest/proxy.go
++++ b/pkg/registry/core/node/rest/proxy.go
+@@ -84,5 +84,7 @@ func (r *ProxyREST) Connect(ctx context.Context, id string, opts runtime.Object,
+ func newThrottledUpgradeAwareProxyHandler(location *url.URL, transport http.RoundTripper, wrapTransport, upgradeRequired bool, responder rest.Responder) *proxy.UpgradeAwareHandler {
+ 	handler := proxy.NewUpgradeAwareHandler(location, transport, wrapTransport, upgradeRequired, proxy.NewErrorResponder(responder))
+ 	handler.MaxBytesPerSec = capabilities.Get().PerConnectionBandwidthLimitBytesPerSec
++	handler.UpgradeRequired = false
++	handler.UseLocationHost = true
+ 	return handler
+ }
 diff --git a/pkg/registry/core/pod/rest/subresources.go b/pkg/registry/core/pod/rest/subresources.go
-index e6ffa3408ff..d63c9c18dae 100644
+index e6ffa3408ff..186fa812c9c 100644
 --- a/pkg/registry/core/pod/rest/subresources.go
 +++ b/pkg/registry/core/pod/rest/subresources.go
-@@ -189,25 +189,14 @@ func (r *ExecREST) Connect(ctx context.Context, name string, opts runtime.Object
+@@ -189,25 +189,13 @@ func (r *ExecREST) Connect(ctx context.Context, name string, opts runtime.Object
  	if !ok {
  		return nil, fmt.Errorf("invalid options object: %#v", opts)
  	}
@@ -26,20 +38,46 @@ index e6ffa3408ff..d63c9c18dae 100644
 -		handler = translator.NewTranslatingHandler(handler, streamtranslator, wsstream.IsWebSocketRequestWithStreamCloseProtocol)
 -	}
 -	return handler, nil
-+	// Redirect to kubelet directly instead of proxying
 +	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 +		http.Redirect(w, req, location.String(), http.StatusTemporaryRedirect)
 +	}), nil
  }
  
  // NewConnectOptions returns the versioned object that represents exec parameters
-@@ -281,5 +270,6 @@ func (r *PortForwardREST) Connect(ctx context.Context, name string, opts runtime
+@@ -281,5 +269,7 @@ func (r *PortForwardREST) Connect(ctx context.Context, name string, opts runtime
  func newThrottledUpgradeAwareProxyHandler(location *url.URL, transport http.RoundTripper, wrapTransport, upgradeRequired bool, responder rest.Responder) http.Handler {
  	handler := proxy.NewUpgradeAwareHandler(location, transport, wrapTransport, upgradeRequired, proxy.NewErrorResponder(responder))
  	handler.MaxBytesPerSec = capabilities.Get().PerConnectionBandwidthLimitBytesPerSec
++	handler.UpgradeRequired = false
 +	handler.UseLocationHost = true
  	return handler
  }
+diff --git a/pkg/registry/core/service/proxy.go b/pkg/registry/core/service/proxy.go
+index f0eb9d0788a..a2545fd1736 100644
+--- a/pkg/registry/core/service/proxy.go
++++ b/pkg/registry/core/service/proxy.go
+@@ -80,5 +80,7 @@ func (r *ProxyREST) Connect(ctx context.Context, id string, opts runtime.Object,
+ func newThrottledUpgradeAwareProxyHandler(location *url.URL, transport http.RoundTripper, wrapTransport, upgradeRequired bool, responder rest.Responder) *proxy.UpgradeAwareHandler {
+ 	handler := proxy.NewUpgradeAwareHandler(location, transport, wrapTransport, upgradeRequired, proxy.NewErrorResponder(responder))
+ 	handler.MaxBytesPerSec = capabilities.Get().PerConnectionBandwidthLimitBytesPerSec
++	handler.UpgradeRequired = false
++	handler.UseLocationHost = true
+ 	return handler
+ }
+diff --git a/staging/src/k8s.io/apimachinery/pkg/util/httpstream/httpstream.go b/staging/src/k8s.io/apimachinery/pkg/util/httpstream/httpstream.go
+index a7c8d897dc8..4fac7fd481a 100644
+--- a/staging/src/k8s.io/apimachinery/pkg/util/httpstream/httpstream.go
++++ b/staging/src/k8s.io/apimachinery/pkg/util/httpstream/httpstream.go
+@@ -132,6 +132,9 @@ func IsUpgradeRequest(req *http.Request) bool {
+ 			return true
+ 		}
+ 	}
++	if req.Header[http.CanonicalHeaderKey(HeaderProtocolVersion)] != nil {
++		return true
++	}
+ 	return false
+ }
+ 
 diff --git a/staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go b/staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go
 index 185a3db6273..d0127c4e425 100644
 --- a/staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go
