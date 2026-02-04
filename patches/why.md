@@ -141,12 +141,15 @@ kube-apiserver --kubelet-preferred-address-types=ExternalDNS
 **Changes:**
 - Sets `upgradeRequired` to `false` for pod exec requests
 - Sets `UseLocationHost` to `true` for all proxy handlers
+- Kubelet accepts both param styles for exec stream options
 
 **Why:** In the default Kubernetes flow, the API server proxies exec requests to the kubelet and requires an HTTP upgrade (SPDY/WebSocket). This fails in serverless environments where the API server can't maintain long-lived upgraded connections.
 
 By setting `upgradeRequired=false`, the API server allows the request to be handled as a normal proxy request, enabling alternative patterns like redirecting the client directly to the kubelet's public endpoint (via cloudflared tunnel). This lets the kubelet handle the exec upgrade directly with the client.
 
 `UseLocationHost=true` ensures the HTTP Host header sent to the kubelet matches the kubelet's address (e.g., `my-node.trycloudflare.com`) rather than the API server's address (e.g., `lambda-url.amazonaws.com`). Without this, cloudflared tunnels reject the request with a 403 due to Host header mismatch.
+
+The kubelet's exec handler normally expects `input=1`, `output=1`, `error=1` params (translated by the API server's `ExecLocation`). However, when proxying without upgrade, the API server's `upgradeaware.go` overwrites query params with the original request params from kubectl (`stdin=true`, `stdout=true`, `stderr=true`). This patch makes the kubelet accept both param styles and boolean formats via `strconv.ParseBool`.
 
 **Flow (before):**
 ```
@@ -160,4 +163,6 @@ kubectl exec → API server → proxy/redirect → kubelet (handles upgrade dire
 
 **TODO:** Make these changes conditional — only apply when the target kubelet's address type is `ExternalDNS`. This would preserve normal behavior for internal kubelets while enabling redirect for tunneled nodes.
 
-**File:** `pkg/registry/core/pod/rest/subresources.go`
+**Files:**
+- `pkg/registry/core/pod/rest/subresources.go`
+- `staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go`

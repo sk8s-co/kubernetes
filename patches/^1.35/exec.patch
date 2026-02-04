@@ -18,3 +18,43 @@ index e6ffa3408ff..27196951680 100644
 +	handler.UseLocationHost = true
  	return handler
  }
+diff --git a/staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go b/staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go
+index 185a3db6273..d0127c4e425 100644
+--- a/staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go
++++ b/staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go
+@@ -23,6 +23,7 @@ import (
+ 	"fmt"
+ 	"io"
+ 	"net/http"
++	"strconv"
+ 	"time"
+ 
+ 	api "k8s.io/api/core/v1"
+@@ -47,12 +48,23 @@ type Options struct {
+ 	TTY    bool
+ }
+ 
++// boolParam checks multiple query param names, returning true if any parse to true.
++func boolParam(req *http.Request, names ...string) bool {
++	for _, name := range names {
++		if b, _ := strconv.ParseBool(req.FormValue(name)); b {
++			return true
++		}
++	}
++	return false
++}
++
+ // NewOptions creates a new Options from the Request.
++// Accepts both kubelet params (input/output/error) and kubectl params (stdin/stdout/stderr).
+ func NewOptions(req *http.Request) (*Options, error) {
+-	tty := req.FormValue(api.ExecTTYParam) == "1"
+-	stdin := req.FormValue(api.ExecStdinParam) == "1"
+-	stdout := req.FormValue(api.ExecStdoutParam) == "1"
+-	stderr := req.FormValue(api.ExecStderrParam) == "1"
++	tty := boolParam(req, api.ExecTTYParam, "tty")
++	stdin := boolParam(req, api.ExecStdinParam, "stdin")
++	stdout := boolParam(req, api.ExecStdoutParam, "stdout")
++	stderr := boolParam(req, api.ExecStderrParam, "stderr")
+ 	if tty && stderr {
+ 		// TODO: make this an error before we reach this method
+ 		klog.V(4).InfoS("Access to exec with tty and stderr is not supported, bypassing stderr")
