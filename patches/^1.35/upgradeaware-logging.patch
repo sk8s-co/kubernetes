@@ -1,8 +1,8 @@
 diff --git a/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go b/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
-index 8c30a366de9..cade2b01c65 100644
+index 8c30a366de9..f2b58dcf792 100644
 --- a/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
 +++ b/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
-@@ -211,6 +211,18 @@ func proxyRedirectsforRootPath(path string, w http.ResponseWriter, req *http.Req
+@@ -211,10 +211,24 @@ func proxyRedirectsforRootPath(path string, w http.ResponseWriter, req *http.Req
  
  // ServeHTTP handles the proxy request
  func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -19,5 +19,29 @@ index 8c30a366de9..cade2b01c65 100644
 +		"connectionHeader", req.Header.Get("Connection"),
 +	)
  	if h.tryUpgrade(w, req) {
++		klog.V(2).InfoS("UpgradeAwareHandler.ServeHTTP exit", "reason", "tryUpgrade handled")
  		return
  	}
+ 	if h.UpgradeRequired {
++		klog.V(2).InfoS("UpgradeAwareHandler.ServeHTTP exit", "reason", "upgradeRequired error")
+ 		h.Responder.Error(w, req, errors.NewBadRequest("Upgrade request required"))
+ 		return
+ 	}
+@@ -230,6 +244,7 @@ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
+ 
+ 	proxyRedirect := proxyRedirectsforRootPath(loc.Path, w, req)
+ 	if proxyRedirect {
++		klog.V(2).InfoS("UpgradeAwareHandler.ServeHTTP exit", "reason", "proxyRedirect")
+ 		return
+ 	}
+ 
+@@ -290,7 +305,9 @@ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
+ 		// or supporting retry mechanisms by not sending non-fatal errors to the clients
+ 		proxy.ErrorHandler = h.Responder.Error
+ 	}
++	klog.V(2).InfoS("UpgradeAwareHandler.ServeHTTP proxy", "reason", "reverseProxy", "targetURL", newReq.URL.String(), "targetHost", newReq.Host)
+ 	proxy.ServeHTTP(w, newReq)
++	klog.V(2).InfoS("UpgradeAwareHandler.ServeHTTP exit", "reason", "reverseProxy complete")
+ }
+ 
+ type noSuppressPanicError struct{}
