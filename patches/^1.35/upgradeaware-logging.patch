@@ -1,0 +1,23 @@
+diff --git a/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go b/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
+index 8c30a366de9..cade2b01c65 100644
+--- a/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
++++ b/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
+@@ -211,6 +211,18 @@ func proxyRedirectsforRootPath(path string, w http.ResponseWriter, req *http.Req
+ 
+ // ServeHTTP handles the proxy request
+ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
++	klog.V(2).InfoS("UpgradeAwareHandler.ServeHTTP",
++		"method", req.Method,
++		"url", req.URL.String(),
++		"host", req.Host,
++		"upgradeRequired", h.UpgradeRequired,
++		"location", h.Location.String(),
++		"wrapTransport", h.WrapTransport,
++		"useRequestLocation", h.UseRequestLocation,
++		"useLocationHost", h.UseLocationHost,
++		"upgradeHeader", req.Header.Get("Upgrade"),
++		"connectionHeader", req.Header.Get("Connection"),
++	)
+ 	if h.tryUpgrade(w, req) {
+ 		return
+ 	}
