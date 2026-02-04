@@ -1,17 +1,39 @@
 diff --git a/pkg/registry/core/pod/rest/subresources.go b/pkg/registry/core/pod/rest/subresources.go
-index e6ffa3408ff..27196951680 100644
+index e6ffa3408ff..d63c9c18dae 100644
 --- a/pkg/registry/core/pod/rest/subresources.go
 +++ b/pkg/registry/core/pod/rest/subresources.go
-@@ -193,7 +193,7 @@ func (r *ExecREST) Connect(ctx context.Context, name string, opts runtime.Object
+@@ -189,25 +189,14 @@ func (r *ExecREST) Connect(ctx context.Context, name string, opts runtime.Object
+ 	if !ok {
+ 		return nil, fmt.Errorf("invalid options object: %#v", opts)
+ 	}
+-	location, transport, err := pod.ExecLocation(ctx, r.Store, r.KubeletConn, name, execOpts)
++	location, _, err := pod.ExecLocation(ctx, r.Store, r.KubeletConn, name, execOpts)
  	if err != nil {
  		return nil, err
  	}
 -	handler := newThrottledUpgradeAwareProxyHandler(location, transport, false, true, responder)
-+	handler := newThrottledUpgradeAwareProxyHandler(location, transport, false, false, responder)
- 	if utilfeature.DefaultFeatureGate.Enabled(features.TranslateStreamCloseWebsocketRequests) {
- 		// Wrap the upgrade aware handler to implement stream translation
- 		// for WebSocket/V5 upgrade requests.
-@@ -281,5 +281,6 @@ func (r *PortForwardREST) Connect(ctx context.Context, name string, opts runtime
+-	if utilfeature.DefaultFeatureGate.Enabled(features.TranslateStreamCloseWebsocketRequests) {
+-		// Wrap the upgrade aware handler to implement stream translation
+-		// for WebSocket/V5 upgrade requests.
+-		streamOptions := translator.Options{
+-			Stdin:  execOpts.Stdin,
+-			Stdout: execOpts.Stdout,
+-			Stderr: execOpts.Stderr,
+-			Tty:    execOpts.TTY,
+-		}
+-		maxBytesPerSec := capabilities.Get().PerConnectionBandwidthLimitBytesPerSec
+-		streamtranslator := translator.NewStreamTranslatorHandler(location, transport, maxBytesPerSec, streamOptions)
+-		handler = translator.NewTranslatingHandler(handler, streamtranslator, wsstream.IsWebSocketRequestWithStreamCloseProtocol)
+-	}
+-	return handler, nil
++	// Redirect to kubelet directly instead of proxying
++	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
++		http.Redirect(w, req, location.String(), http.StatusTemporaryRedirect)
++	}), nil
+ }
+ 
+ // NewConnectOptions returns the versioned object that represents exec parameters
+@@ -281,5 +270,6 @@ func (r *PortForwardREST) Connect(ctx context.Context, name string, opts runtime
  func newThrottledUpgradeAwareProxyHandler(location *url.URL, transport http.RoundTripper, wrapTransport, upgradeRequired bool, responder rest.Responder) http.Handler {
  	handler := proxy.NewUpgradeAwareHandler(location, transport, wrapTransport, upgradeRequired, proxy.NewErrorResponder(responder))
  	handler.MaxBytesPerSec = capabilities.Get().PerConnectionBandwidthLimitBytesPerSec
