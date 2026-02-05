@@ -102,22 +102,16 @@ index d30ae2fa3dc..bf121619474 100644
  		http.Error(w, errorMsg, http.StatusBadRequest)
  		return nil
 diff --git a/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go b/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
-index 8c30a366de9..110c570b5ff 100644
+index 8c30a366de9..94e83c54983 100644
 --- a/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
 +++ b/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
-@@ -332,6 +332,16 @@ func (h *UpgradeAwareHandler) tryUpgrade(w http.ResponseWriter, req *http.Reques
+@@ -332,6 +332,10 @@ func (h *UpgradeAwareHandler) tryUpgrade(w http.ResponseWriter, req *http.Reques
  	// Only append X-Forwarded-For in the upgrade path, since httputil.NewSingleHostReverseProxy
  	// handles this in the non-upgrade path.
  	utilnet.AppendForwardedForHeader(clone)
 +
-+	// If upgrade headers were stripped (e.g., by HTTP/2 translation) but X-Stream-Protocol-Version
-+	// is present, inject the upgrade headers so the backend receives a proper upgrade request.
-+	if clone.Header.Get(httpstream.HeaderConnection) == "" || !strings.Contains(strings.ToLower(clone.Header.Get(httpstream.HeaderConnection)), "upgrade") {
-+		if clone.Header[http.CanonicalHeaderKey(httpstream.HeaderProtocolVersion)] != nil {
-+			clone.Header.Set(httpstream.HeaderConnection, httpstream.HeaderUpgrade)
-+			clone.Header.Set(httpstream.HeaderUpgrade, "SPDY/3.1")
-+		}
-+	}
++	clone.Header.Set(httpstream.HeaderConnection, httpstream.HeaderUpgrade)
++	clone.Header.Set(httpstream.HeaderUpgrade, "websocket")
 +
  	klog.V(6).Infof("Connecting to backend proxy (direct dial) %s\n  Headers: %v", &location, clone.Header)
  	if h.UseLocationHost {
