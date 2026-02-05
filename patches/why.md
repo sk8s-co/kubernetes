@@ -148,7 +148,9 @@ kube-apiserver --kubelet-preferred-address-types=ExternalDNS
 
 This patch enables a redirect-based flow where the API server redirects exec requests to the kubelet's external endpoint (e.g., cloudflared tunnel). The key insight is that while `Connection: Upgrade` headers are stripped by Lambda, the `X-Stream-Protocol-Version` headers survive. By treating these headers as an upgrade indicator, the kubelet can recognize exec requests even when the standard upgrade headers are missing.
 
-**`X-Stream-Protocol-Version` as upgrade indicator:** kubectl sends these headers to negotiate the streaming protocol version. Lambda strips `Connection` and `Upgrade` but passes through `X-Stream-Protocol-Version`. The modified `IsUpgradeRequest()` checks for this header, allowing the upgrade path to be taken on the kubelet even when the request arrives via redirect.
+**`X-Stream-Protocol-Version` as upgrade indicator:** kubectl sends these headers to negotiate the streaming protocol version. Lambda and HTTP/2→HTTP/1.1 translation (e.g., cloudflared) strip `Connection` and `Upgrade` but pass through `X-Stream-Protocol-Version`. The modified `IsUpgradeRequest()` checks for this header, allowing the upgrade path to be taken on the kubelet even when the request arrives via redirect.
+
+**Header injection:** When the kubelet sees `X-Stream-Protocol-Version` but no `Connection: Upgrade` headers, it injects the missing upgrade headers (`Connection: Upgrade`, `Upgrade: SPDY/3.1`) into the request before processing. This allows the SPDY upgrade to proceed even when HTTP/2 translation stripped the original headers.
 
 **`UseLocationHost=true`:** Ensures the HTTP Host header sent to the kubelet matches the kubelet's address (e.g., `my-node.trycloudflare.com`) rather than the API server's address. Without this, cloudflared tunnels reject the request with 403 due to Host header mismatch.
 

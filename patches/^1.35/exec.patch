@@ -79,16 +79,24 @@ index a7c8d897dc8..4fac7fd481a 100644
  }
  
 diff --git a/staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go b/staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go
-index d30ae2fa3dc..e6979dd8a76 100644
+index d30ae2fa3dc..bf121619474 100644
 --- a/staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go
 +++ b/staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go
-@@ -86,7 +86,9 @@ func NewResponseUpgraderWithPings(pingPeriod time.Duration) httpstream.ResponseU
+@@ -86,7 +86,17 @@ func NewResponseUpgraderWithPings(pingPeriod time.Duration) httpstream.ResponseU
  func (u responseUpgrader) UpgradeResponse(w http.ResponseWriter, req *http.Request, newStreamHandler httpstream.NewStreamHandler) httpstream.Connection {
  	connectionHeader := strings.ToLower(req.Header.Get(httpstream.HeaderConnection))
  	upgradeHeader := strings.ToLower(req.Header.Get(httpstream.HeaderUpgrade))
 -	if !strings.Contains(connectionHeader, strings.ToLower(httpstream.HeaderUpgrade)) || !strings.Contains(upgradeHeader, strings.ToLower(HeaderSpdy31)) {
 +	hasUpgradeHeaders := strings.Contains(connectionHeader, strings.ToLower(httpstream.HeaderUpgrade)) && strings.Contains(upgradeHeader, strings.ToLower(HeaderSpdy31))
 +	hasProtocolVersion := req.Header[http.CanonicalHeaderKey(httpstream.HeaderProtocolVersion)] != nil
++
++	// If we have X-Stream-Protocol-Version but upgrade headers were stripped (e.g., by HTTP/2 translation),
++	// inject the upgrade headers so downstream code works correctly.
++	if !hasUpgradeHeaders && hasProtocolVersion {
++		req.Header.Set(httpstream.HeaderConnection, httpstream.HeaderUpgrade)
++		req.Header.Set(httpstream.HeaderUpgrade, HeaderSpdy31)
++	}
++
 +	if !hasUpgradeHeaders && !hasProtocolVersion {
  		errorMsg := fmt.Sprintf("unable to upgrade: missing upgrade headers in request: %#v", req.Header)
  		http.Error(w, errorMsg, http.StatusBadRequest)
