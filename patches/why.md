@@ -150,7 +150,11 @@ This patch enables a redirect-based flow where the API server redirects exec req
 
 **`X-Stream-Protocol-Version` as upgrade indicator:** kubectl sends these headers to negotiate the streaming protocol version. Lambda and HTTP/2→HTTP/1.1 translation (e.g., cloudflared) strip `Connection` and `Upgrade` but pass through `X-Stream-Protocol-Version`. The modified `IsUpgradeRequest()` checks for this header, allowing the upgrade path to be taken on the kubelet even when the request arrives via redirect.
 
-**Header injection:** When the kubelet sees `X-Stream-Protocol-Version` but no `Connection: Upgrade` headers, it injects the missing upgrade headers (`Connection: Upgrade`, `Upgrade: SPDY/3.1`) into the request before processing. This allows the SPDY upgrade to proceed even when HTTP/2 translation stripped the original headers.
+**Header injection:** When the kubelet sees `X-Stream-Protocol-Version` but no `Connection: Upgrade` headers, it injects the missing upgrade headers (`Connection: Upgrade`, `Upgrade: SPDY/3.1`) into the request before processing. This happens in two places:
+1. `spdy/upgrade.go` `UpgradeResponse()` - for the incoming request from cloudflared
+2. `proxy/upgradeaware.go` `tryUpgrade()` - for the outgoing request to the CRI streaming server
+
+This allows the SPDY upgrade to proceed even when HTTP/2 translation stripped the original headers.
 
 **`UseLocationHost=true`:** Ensures the HTTP Host header sent to the kubelet matches the kubelet's address (e.g., `my-node.trycloudflare.com`) rather than the API server's address. Without this, cloudflared tunnels reject the request with 403 due to Host header mismatch.
 
@@ -181,6 +185,7 @@ kubectl → kubelet (via cloudflared) → [UPGRADE directly] → success
 - `pkg/registry/core/node/rest/proxy.go` - UpgradeRequired=false, UseLocationHost=true
 - `pkg/registry/core/service/proxy.go` - UpgradeRequired=false, UseLocationHost=true
 - `staging/src/k8s.io/apimachinery/pkg/util/httpstream/httpstream.go` - IsUpgradeRequest() accepts X-Stream-Protocol-Version
-- `staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go` - UpgradeResponse() accepts X-Stream-Protocol-Version
+- `staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go` - UpgradeResponse() injects upgrade headers
+- `staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go` - tryUpgrade() injects upgrade headers before CRI dial
 - `staging/src/k8s.io/apiserver/pkg/util/proxy/streamtunnel.go` - Backend response validation accepts X-Stream-Protocol-Version
 - `staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go` - Accepts both param styles
