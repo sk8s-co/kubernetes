@@ -143,7 +143,7 @@ kube-apiserver --kubelet-preferred-address-types=ExternalDNS
 - Sets `UpgradeRequired=false` and `UseLocationHost=true` on all proxy handlers (pod, node, service)
 - `IsUpgradeRequest()` also returns `true` if `X-Stream-Protocol-Version` header is present
 - `UpgradeResponse()` injects SPDY upgrade headers when `X-Stream-Protocol-Version` is present but upgrade headers are missing
-- `tryUpgrade()` forces WebSocket protocol when proxying to CRI (instead of SPDY)
+- `tryUpgrade()` converts request to proper WebSocket upgrade: sets method to GET and adds WebSocket headers (`Connection`, `Upgrade`, `Sec-WebSocket-Key`, `Sec-WebSocket-Version`)
 - Kubelet accepts both param styles (`input`/`stdin`, `output`/`stdout`, `error`/`stderr`) via `strconv.ParseBool`
 
 **Why:** In serverless environments (e.g., Lambda), the API server cannot maintain long-lived upgraded connections required for `kubectl exec`. This patch enables a redirect-based flow where the API server redirects exec requests to the kubelet's external endpoint (e.g., cloudflared tunnel).
@@ -152,7 +152,7 @@ kube-apiserver --kubelet-preferred-address-types=ExternalDNS
 
 **The 101 response problem:** Even after injecting upgrade headers on the kubelet side, Cloudflare's HTTP/2 translation converts `101 Switching Protocols` responses to `200 OK` for SPDY upgrades. This breaks the client-side upgrade handshake. However, Cloudflare has native WebSocket support and properly handles WebSocket 101 responses.
 
-**Solution:** The kubelet proxies to CRI using WebSocket instead of SPDY. CRI supports both protocols, so we force `Upgrade: websocket` when dialing the CRI streaming server. Cloudflare properly forwards the WebSocket 101 response, and CRI handles the exec request.
+**Solution:** The kubelet proxies to CRI using WebSocket instead of SPDY. CRI supports both protocols, so we convert the request to a proper WebSocket upgrade: change method to GET (required by WebSocket spec) and set headers (`Upgrade: websocket`, `Connection: Upgrade`, `Sec-WebSocket-Key`, `Sec-WebSocket-Version: 13`). Cloudflare properly forwards the WebSocket 101 response, and CRI handles the exec request.
 
 **`X-Stream-Protocol-Version` as upgrade indicator:** kubectl sends these headers to negotiate the streaming protocol. The modified `IsUpgradeRequest()` and `UpgradeResponse()` check for this header, allowing the upgrade path to proceed even when standard upgrade headers are stripped.
 
@@ -186,6 +186,6 @@ kubectl → cloudflared → kubelet → CRI (WebSocket)
 - `pkg/registry/core/service/proxy.go` - UpgradeRequired=false, UseLocationHost=true
 - `staging/src/k8s.io/apimachinery/pkg/util/httpstream/httpstream.go` - IsUpgradeRequest() accepts X-Stream-Protocol-Version
 - `staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go` - UpgradeResponse() injects upgrade headers
-- `staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go` - tryUpgrade() forces WebSocket to CRI
+- `staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go` - tryUpgrade() converts to WebSocket (GET + headers)
 - `staging/src/k8s.io/apiserver/pkg/util/proxy/streamtunnel.go` - Backend response validation accepts X-Stream-Protocol-Version
 - `staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go` - Accepts both param styles

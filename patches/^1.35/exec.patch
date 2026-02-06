@@ -102,16 +102,28 @@ index d30ae2fa3dc..bf121619474 100644
  		http.Error(w, errorMsg, http.StatusBadRequest)
  		return nil
 diff --git a/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go b/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
-index 8c30a366de9..94e83c54983 100644
 --- a/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
 +++ b/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go
-@@ -332,6 +332,10 @@ func (h *UpgradeAwareHandler) tryUpgrade(w http.ResponseWriter, req *http.Reques
+@@ -19,6 +19,8 @@ package proxy
+ import (
+ 	"bufio"
+ 	"bytes"
++	"crypto/rand"
++	"encoding/base64"
+ 	"fmt"
+ 	"io"
+ 	"log"
+@@ -332,6 +334,14 @@ func (h *UpgradeAwareHandler) tryUpgrade(w http.ResponseWriter, req *http.Reques
  	// Only append X-Forwarded-For in the upgrade path, since httputil.NewSingleHostReverseProxy
  	// handles this in the non-upgrade path.
  	utilnet.AppendForwardedForHeader(clone)
 +
++	// Transition back to a standard websocket upgrade request
++	clone.Method = http.MethodGet
 +	clone.Header.Set(httpstream.HeaderConnection, httpstream.HeaderUpgrade)
 +	clone.Header.Set(httpstream.HeaderUpgrade, "websocket")
++	clone.Header.Set("Sec-WebSocket-Key", base64.StdEncoding.EncodeToString(func() []byte { b := make([]byte, 16); rand.Read(b); return b }()))
++	clone.Header.Set("Sec-WebSocket-Version", "13")
 +
  	klog.V(6).Infof("Connecting to backend proxy (direct dial) %s\n  Headers: %v", &location, clone.Header)
  	if h.UseLocationHost {
