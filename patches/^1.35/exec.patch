@@ -124,6 +124,7 @@ diff --git a/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go b/st
 +	clone.Header.Set(httpstream.HeaderUpgrade, "websocket")
 +	clone.Header.Set("Sec-WebSocket-Key", base64.StdEncoding.EncodeToString(func() []byte { b := make([]byte, 16); rand.Read(b); return b }()))
 +	clone.Header.Set("Sec-WebSocket-Version", "13")
++	h.UseLocationHost = false
 +
  	klog.V(6).Infof("Connecting to backend proxy (direct dial) %s\n  Headers: %v", &location, clone.Header)
  	if h.UseLocationHost {

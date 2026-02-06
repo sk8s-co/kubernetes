@@ -143,7 +143,7 @@ kube-apiserver --kubelet-preferred-address-types=ExternalDNS
 - Sets `UpgradeRequired=false` and `UseLocationHost=true` on all proxy handlers (pod, node, service)
 - `IsUpgradeRequest()` also returns `true` if `X-Stream-Protocol-Version` header is present
 - `UpgradeResponse()` injects SPDY upgrade headers when `X-Stream-Protocol-Version` is present but upgrade headers are missing
-- `tryUpgrade()` converts request to proper WebSocket upgrade: sets method to GET and adds WebSocket headers (`Connection`, `Upgrade`, `Sec-WebSocket-Key`, `Sec-WebSocket-Version`)
+- `tryUpgrade()` converts request to proper WebSocket upgrade: sets method to GET, adds WebSocket headers (`Connection`, `Upgrade`, `Sec-WebSocket-Key`, `Sec-WebSocket-Version`), and forces `UseLocationHost=false`
 - Kubelet accepts both param styles (`input`/`stdin`, `output`/`stdout`, `error`/`stderr`) via `strconv.ParseBool`
 
 **Why:** In serverless environments (e.g., Lambda), the API server cannot maintain long-lived upgraded connections required for `kubectl exec`. This patch enables a redirect-based flow where the API server redirects exec requests to the kubelet's external endpoint (e.g., cloudflared tunnel).
@@ -156,7 +156,7 @@ kube-apiserver --kubelet-preferred-address-types=ExternalDNS
 
 **`X-Stream-Protocol-Version` as upgrade indicator:** kubectl sends these headers to negotiate the streaming protocol. The modified `IsUpgradeRequest()` and `UpgradeResponse()` check for this header, allowing the upgrade path to proceed even when standard upgrade headers are stripped.
 
-**`UseLocationHost=true`:** Ensures the HTTP Host header matches the kubelet's address (e.g., `my-node.trycloudflare.com`) rather than the API server's address. Without this, cloudflared tunnels reject with 403.
+**`UseLocationHost` handling:** Proxy handlers set `UseLocationHost=true` so the Host header matches the kubelet's address. However, `tryUpgrade()` forces `UseLocationHost=false` when converting to WebSocket, preserving the original Host header to avoid potential issues with Cloudflare's WebSocket handling.
 
 **Param compatibility:** The kubelet's exec handler normally expects `input=1`, `output=1` params. When the client connects directly via redirect, it sends `stdin=true`, `stdout=true`. This patch accepts both formats.
 
@@ -186,6 +186,6 @@ kubectl → cloudflared → kubelet → CRI (WebSocket)
 - `pkg/registry/core/service/proxy.go` - UpgradeRequired=false, UseLocationHost=true
 - `staging/src/k8s.io/apimachinery/pkg/util/httpstream/httpstream.go` - IsUpgradeRequest() accepts X-Stream-Protocol-Version
 - `staging/src/k8s.io/apimachinery/pkg/util/httpstream/spdy/upgrade.go` - UpgradeResponse() injects upgrade headers
-- `staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go` - tryUpgrade() converts to WebSocket (GET + headers)
+- `staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go` - tryUpgrade() converts to WebSocket (GET + headers + UseLocationHost=false)
 - `staging/src/k8s.io/apiserver/pkg/util/proxy/streamtunnel.go` - Backend response validation accepts X-Stream-Protocol-Version
 - `staging/src/k8s.io/kubelet/pkg/cri/streaming/remotecommand/httpstream.go` - Accepts both param styles
