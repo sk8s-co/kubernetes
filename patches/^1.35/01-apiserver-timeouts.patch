@@ -1,0 +1,49 @@
+diff --git a/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go b/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go
+index eb52baf1946..21c63242f09 100644
+--- a/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go
++++ b/staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go
+@@ -22,6 +22,8 @@ import (
+ 	"math/rand"
+ 	"net/http"
+ 	"net/url"
++	"os"
++	"strconv"
+ 	"strings"
+ 	"time"
+ 
+@@ -47,6 +49,21 @@ import (
+ 	"k8s.io/klog/v2"
+ )
+ 
++// Request timeout enforcement (0 = disabled)
++var (
++	requestMinTimeout time.Duration
++	requestMaxTimeout time.Duration
++)
++
++func init() {
++	if v, _ := strconv.Atoi(os.Getenv("REQUEST_MIN_TIMEOUT")); v > 0 {
++		requestMinTimeout = time.Duration(v) * time.Second
++	}
++	if v, _ := strconv.Atoi(os.Getenv("REQUEST_MAX_TIMEOUT")); v > 0 {
++		requestMaxTimeout = time.Duration(v) * time.Second
++	}
++}
++
+ // getterFunc performs a get request with the given context and object name. The request
+ // may be used to deserialize an options object to pass to the getter.
+ type getterFunc func(ctx context.Context, name string, req *http.Request) (runtime.Object, error)
+@@ -259,6 +276,13 @@ func ListResource(r rest.Lister, rw rest.Watcher, scope *RequestScope, forceWatc
+ 			if timeout == 0 && minRequestTimeout > 0 {
+ 				timeout = time.Duration(float64(minRequestTimeout) * (rand.Float64() + 1.0))
+ 			}
++			// Clamp to [requestMinTimeout, requestMaxTimeout] if set
++			if requestMinTimeout > 0 && timeout < requestMinTimeout {
++				timeout = requestMinTimeout
++			}
++			if requestMaxTimeout > 0 && timeout > requestMaxTimeout {
++				timeout = requestMaxTimeout
++			}
+ 
+ 			klog.V(3).InfoS("Starting watch", "path", req.URL.Path, "resourceVersion", opts.ResourceVersion, "labels", opts.LabelSelector, "fields", opts.FieldSelector, "timeout", timeout)
+ 			ctx, cancel := context.WithTimeout(ctx, timeout)

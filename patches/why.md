@@ -1,5 +1,31 @@
 # Patches
 
+## 01-apiserver-timeouts.patch
+
+**Versions:** `^1.35` (>=1.35.0 <2.0.0)
+
+**Changes:**
+- Adds server-side watch request timeout clamping via environment variables
+- `REQUEST_MIN_TIMEOUT` sets minimum timeout (in seconds)
+- `REQUEST_MAX_TIMEOUT` sets maximum timeout (in seconds)
+
+**Why:** In serverless environments, clients may request very short or very long watch timeouts that aren't optimal. This patch allows operators to enforce min/max bounds on watch request timeouts at the API server level, independent of what clients request.
+
+**Environment Variables:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REQUEST_MIN_TIMEOUT` | `0` (disabled) | Minimum watch timeout in seconds |
+| `REQUEST_MAX_TIMEOUT` | `0` (disabled) | Maximum watch timeout in seconds |
+
+**Usage:**
+```bash
+# Enforce 30s minimum, 5 minute maximum watch timeouts
+export REQUEST_MIN_TIMEOUT=30
+export REQUEST_MAX_TIMEOUT=300
+```
+
+**File:** `staging/src/k8s.io/apiserver/pkg/endpoints/handlers/get.go`
+
 ## 01-etag-cache-control.patch
 
 **Versions:** `^1.35` (>=1.35.0 <2.0.0)
