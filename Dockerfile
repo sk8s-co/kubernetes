@@ -23,7 +23,8 @@ FROM cloned AS patched
 COPY patches/ /patches/
 COPY remote-patches/ /remote-patches/
 COPY hack/apply-patches.sh /hack/apply-patches.sh
-RUN /hack/apply-patches.sh
+ENV PATCHES_DIR=/patches REMOTE_PATCHES_DIR=/remote-patches REMOTE_CACHE_DIR=/remote-cache
+RUN /hack/apply-patches.sh all
 
 FROM patched AS kube-apiserver
 ARG KUBE_VERSION

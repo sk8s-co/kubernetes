@@ -1,0 +1,59 @@
+diff --git a/staging/src/k8s.io/client-go/tools/cache/reflector.go b/staging/src/k8s.io/client-go/tools/cache/reflector.go
+index 0cc1eb54431..6f25f4be9e5 100644
+--- a/staging/src/k8s.io/client-go/tools/cache/reflector.go
++++ b/staging/src/k8s.io/client-go/tools/cache/reflector.go
+@@ -23,7 +23,9 @@ import (
+ 	"io"
+ 	"math"
+ 	"math/rand"
++	"os"
+ 	"reflect"
++	"strconv"
+ 	"strings"
+ 	"sync"
+ 	"time"
+@@ -63,6 +65,44 @@ var (
+ 	defaultBackoffJitter   = 1.0
+ )
+ 
++func init() {
++	if v := os.Getenv("WATCH_MIN_TIMEOUT"); v != "" {
++		if d, err := time.ParseDuration(v); err == nil {
++			defaultMinWatchTimeout = d
++		}
++	}
++	if v := os.Getenv("WATCH_MAX_TIMEOUT"); v != "" {
++		if d, err := time.ParseDuration(v); err == nil {
++			defaultMaxWatchTimeout = d
++		}
++	}
++	if v := os.Getenv("WATCH_BACKOFF_INIT"); v != "" {
++		if d, err := time.ParseDuration(v); err == nil {
++			defaultBackoffInit = d
++		}
++	}
++	if v := os.Getenv("WATCH_BACKOFF_MAX"); v != "" {
++		if d, err := time.ParseDuration(v); err == nil {
++			defaultBackoffMax = d
++		}
++	}
++	if v := os.Getenv("WATCH_BACKOFF_RESET"); v != "" {
++		if d, err := time.ParseDuration(v); err == nil {
++			defaultBackoffReset = d
++		}
++	}
++	if v := os.Getenv("WATCH_BACKOFF_FACTOR"); v != "" {
++		if f, err := strconv.ParseFloat(v, 64); err == nil {
++			defaultBackoffFactor = f
++		}
++	}
++	if v := os.Getenv("WATCH_BACKOFF_JITTER"); v != "" {
++		if f, err := strconv.ParseFloat(v, 64); err == nil {
++			defaultBackoffJitter = f
++		}
++	}
++}
++
+ // ReflectorStore is the subset of cache.Store that the reflector uses
+ type ReflectorStore interface {
+ 	// Add adds the given object to the accumulator associated with the given object's key
