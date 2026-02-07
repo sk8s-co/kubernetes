@@ -5,7 +5,7 @@ ARG ETCD_VERSION=3.6.6
 
 FROM quay.io/coreos/etcd:v${ETCD_VERSION} AS etcd
 
-FROM golang:${KUBE_VERSION_GO}-alpine AS patched
+FROM golang:${KUBE_VERSION_GO}-alpine AS cloned
 ARG KUBE_VERSION_GO \
     KUBE_VERSION \
     KUBE_VERSION_PATCH
@@ -19,28 +19,11 @@ RUN npm install -g semver@7
 RUN git clone https://github.com/kubernetes/kubernetes.git -b v${KUBE_VERSION}.${KUBE_VERSION_PATCH} --depth=1 /kubernetes
 WORKDIR /kubernetes
 
+FROM cloned AS patched
 COPY patches/ /patches/
-RUN set -e && \
-    current="${KUBE_VERSION}.${KUBE_VERSION_PATCH}" && \
-    for dir in /patches/*/; do \
-    [ -d "$dir" ] || continue; \
-    range=$(basename "$dir") && \
-    if semver -r "$range" "$current" >/dev/null 2>&1; then \
-    for patch in "$dir"*.patch; do \
-    [ -f "$patch" ] || continue; \
-    echo "Applying patch: $patch (range: $range)" && \
-    git apply --verbose --check "$patch" && \
-    git apply --verbose "$patch"; \
-    done; \
-    else \
-    echo "Skipping patches in $dir (range $range does not match $current)"; \
-    fi; \
-    done && \
-    echo "=== Applied patches ===" && \
-    git diff HEAD && \
-    git config user.email "build@localhost" && \
-    git config user.name "Build" && \
-    git add -A && git commit -m "Apply patches"
+COPY remote-patches/ /remote-patches/
+COPY hack/apply-patches.sh /hack/apply-patches.sh
+RUN /hack/apply-patches.sh
 
 FROM patched AS kube-apiserver
 ARG KUBE_VERSION
