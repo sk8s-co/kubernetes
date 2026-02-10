@@ -1,0 +1,13 @@
+diff --git a/pkg/kubelet/kubelet.go b/pkg/kubelet/kubelet.go
+index b8b7cfd84e9..1d3eacc2ad0 100644
+--- a/pkg/kubelet/kubelet.go
++++ b/pkg/kubelet/kubelet.go
+@@ -706,7 +706,7 @@ func NewMainKubelet(ctx context.Context,
+ 	klet.runtimeService = kubeDeps.RemoteRuntimeService
+ 
+ 	if kubeDeps.KubeClient != nil {
+-		klet.runtimeClassManager = runtimeclass.NewManager(kubeDeps.KubeClient)
++		// klet.runtimeClassManager = runtimeclass.NewManager(kubeDeps.KubeClient)
+ 	}
+ 
+ 	// setup containerLogManager for CRI container runtime

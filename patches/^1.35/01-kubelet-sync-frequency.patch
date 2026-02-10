@@ -1,0 +1,22 @@
+diff --git a/pkg/kubelet/kubelet.go b/pkg/kubelet/kubelet.go
+index b8b7cfd84e9..1b97a7d98d0 100644
+--- a/pkg/kubelet/kubelet.go
++++ b/pkg/kubelet/kubelet.go
+@@ -470,7 +470,7 @@ func NewMainKubelet(ctx context.Context,
+ 	// If kubeClient == nil, we are running in standalone mode (i.e. no API servers)
+ 	// If not nil, we are running as part of a cluster and should sync w/API
+ 	if kubeDeps.KubeClient != nil {
+-		kubeInformers := informers.NewSharedInformerFactoryWithOptions(kubeDeps.KubeClient, 0, informers.WithTweakListOptions(func(options *metav1.ListOptions) {
++		kubeInformers := informers.NewSharedInformerFactoryWithOptions(kubeDeps.KubeClient, kubeCfg.SyncFrequency.Duration, informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+ 			options.FieldSelector = fields.Set{metav1.ObjectNameField: string(nodeName)}.String()
+ 		}))
+ 		nodeInformer = kubeInformers.Core().V1().Nodes()
+@@ -536,7 +536,7 @@ func NewMainKubelet(ctx context.Context,
+ 	if kubeDeps.KubeClient != nil {
+ 		// don't watch headless services, they are not needed since this informer is only used to create the environment variables for pods.
+ 		// See https://issues.k8s.io/122394
+-		kubeInformers := informers.NewSharedInformerFactoryWithOptions(kubeDeps.KubeClient, 0, informers.WithTweakListOptions(func(options *metav1.ListOptions) {
++		kubeInformers := informers.NewSharedInformerFactoryWithOptions(kubeDeps.KubeClient, kubeCfg.SyncFrequency.Duration, informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+ 			options.FieldSelector = fields.OneTermNotEqualSelector("spec.clusterIP", v1.ClusterIPNone).String()
+ 		}))
+ 		serviceLister = kubeInformers.Core().V1().Services().Lister()

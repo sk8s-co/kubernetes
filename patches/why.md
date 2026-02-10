@@ -93,6 +93,73 @@ kube-apiserver --kubelet-preferred-address-types=ExternalDNS
 
 **File:** `pkg/kubelet/nodestatus/setters.go`
 
+## 01-kubelet-csi-disabled.patch
+
+**Versions:** `^1.35` (>=1.35.0 <2.0.0)
+
+**Changes:**
+- Comments out the CSIDriver informer startup in volume manager
+
+**Why:** In serverless environments that don't use CSI volumes (only emptyDir, configMap, secret, hostPath, projected), the CSIDriver informer creates an unnecessary watch connection to the API server.
+
+**Impact:**
+- ✅ emptyDir, hostPath, configMap, secret, projected volumes work normally
+- ❌ CSI volumes will fail with "not found" errors
+
+**Use this patch only if you don't need CSI volume support.**
+
+**File:** `pkg/kubelet/volumemanager/volume_manager.go`
+
+## 01-kubelet-runtimeclass-disabled.patch
+
+**Versions:** `^1.35` (>=1.35.0 <2.0.0)
+
+**Changes:**
+- Disables the RuntimeClass informer by commenting out `runtimeClassManager` initialization
+
+**Why:** In serverless environments where only the default container runtime is used, the RuntimeClass informer creates unnecessary watch connections to the API server. Disabling it saves one informer/watch.
+
+**Safety:** All usages of `runtimeClassManager` in kubelet have nil checks:
+- `kuberuntime_sandbox.go:57`: `if m.runtimeClassManager != nil`
+- `kubelet_pods.go:2792`: `if kl.runtimeClassManager == nil { return false }`
+- `util/util.go:113`: `if pod != nil && rcManager != nil`
+
+The only unsafe code path (`kuberuntime_container.go:182`) is behind the `RuntimeClassInImageCriAPI` feature gate, which is Alpha and disabled by default.
+
+**Impact:**
+- Pods **without** `spec.runtimeClassName`: Work normally with default runtime
+- Pods **with** `spec.runtimeClassName`: Will fail (use this patch only if you don't use RuntimeClass)
+- Saves one informer watch connection to API server
+
+**File:** `pkg/kubelet/kubelet.go`
+
+## 01-kubelet-sync-frequency.patch
+
+**Versions:** `^1.35` (>=1.35.0 <2.0.0)
+
+**Changes:**
+- Uses `KubeletConfiguration.SyncFrequency` for Node and Service informer resync periods instead of hardcoded `0`
+
+**Why:** By default, kubelet creates Node and Service informers with `resyncPeriod = 0` (never resync). This means informers rely solely on watch events and only re-list on watch reconnection. While this reduces API server load, it also means there's no periodic consistency check.
+
+This patch uses the existing `SyncFrequency` config option (default: 1 minute) as the resync period, allowing operators to tune this behavior. Setting a longer `SyncFrequency` reduces API calls, while the default provides periodic consistency checks.
+
+**Configuration:**
+```yaml
+# kubelet-config.yaml
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+syncFrequency: 5m  # Node/Service informers resync every 5 minutes
+```
+
+**Affected Informers:**
+| Informer | Location | Before | After |
+|----------|----------|--------|-------|
+| Node | `kubelet.go:473` | `0` (never) | `SyncFrequency` |
+| Service | `kubelet.go:539` | `0` (never) | `SyncFrequency` |
+
+**File:** `pkg/kubelet/kubelet.go`
+
 ## 02-watch-env.patch
 
 **Versions:** `^1.35` (>=1.35.0 <2.0.0)

@@ -1,0 +1,13 @@
+diff --git a/pkg/kubelet/volumemanager/volume_manager.go b/pkg/kubelet/volumemanager/volume_manager.go
+index f0c58f3bad1..aca20103254 100644
+--- a/pkg/kubelet/volumemanager/volume_manager.go
++++ b/pkg/kubelet/volumemanager/volume_manager.go
+@@ -302,7 +302,7 @@ func (vm *volumeManager) Run(ctx context.Context, sourcesReady config.SourcesRea
+ 
+ 	if vm.kubeClient != nil {
+ 		// start informer for CSIDriver
+-		go vm.volumePluginMgr.Run(ctx.Done())
++		// go vm.volumePluginMgr.Run(ctx.Done())
+ 	}
+ 
+ 	go vm.desiredStateOfWorldPopulator.Run(ctx, sourcesReady)
