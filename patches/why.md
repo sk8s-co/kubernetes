@@ -98,17 +98,27 @@ kube-apiserver --kubelet-preferred-address-types=ExternalDNS
 **Versions:** `^1.35` (>=1.35.0 <2.0.0)
 
 **Changes:**
-- Comments out the CSIDriver informer startup in volume manager
+- Comments out the CSI volume plugin import and registration
+- Comments out the CSIDriver informer startup
 
-**Why:** In serverless environments that don't use CSI volumes (only emptyDir, configMap, secret, hostPath, projected), the CSIDriver informer creates an unnecessary watch connection to the API server.
+**Why:** In serverless environments that don't use CSI volumes (only emptyDir, configMap, secret, hostPath, projected), the CSI subsystem:
+- Creates unnecessary watch connections (CSIDriver informer)
+- Attempts CSINode initialization which fails if the node doesn't exist yet
+- Adds startup latency waiting for CSI initialization
+
+This patch completely disables CSI:
+1. The CSI plugin is never loaded (no CSINode init errors)
+2. The CSIDriver informer is never started (no watch connection)
 
 **Impact:**
-- ✅ emptyDir, hostPath, configMap, secret, projected volumes work normally
-- ❌ CSI volumes will fail with "not found" errors
+- ✅ emptyDir, hostPath, configMap, secret, projected, nfs, iscsi, fc volumes work normally
+- ❌ CSI volumes will not be available
 
 **Use this patch only if you don't need CSI volume support.**
 
-**File:** `pkg/kubelet/volumemanager/volume_manager.go`
+**Files:**
+- `cmd/kubelet/app/plugins.go`
+- `pkg/kubelet/volumemanager/volume_manager.go`
 
 ## 01-kubelet-runtimeclass-disabled.patch
 

@@ -1,13 +1,41 @@
+diff --git a/cmd/kubelet/app/plugins.go b/cmd/kubelet/app/plugins.go
+index ba40088dfe0..9972b0a295d 100644
+--- a/cmd/kubelet/app/plugins.go
++++ b/cmd/kubelet/app/plugins.go
+@@ -27,7 +27,7 @@ import (
+ 	"k8s.io/kubernetes/pkg/features"
+ 	"k8s.io/kubernetes/pkg/volume"
+ 	"k8s.io/kubernetes/pkg/volume/configmap"
+-	"k8s.io/kubernetes/pkg/volume/csi"
++	// "k8s.io/kubernetes/pkg/volume/csi"
+ 	"k8s.io/kubernetes/pkg/volume/downwardapi"
+ 	"k8s.io/kubernetes/pkg/volume/emptydir"
+ 	"k8s.io/kubernetes/pkg/volume/fc"
+@@ -68,7 +68,7 @@ func ProbeVolumePlugins(ctx context.Context, featureGate featuregate.FeatureGate
+ 	allPlugins = append(allPlugins, configmap.ProbeVolumePlugins()...)
+ 	allPlugins = append(allPlugins, projected.ProbeVolumePlugins()...)
+ 	allPlugins = append(allPlugins, local.ProbeVolumePlugins()...)
+-	allPlugins = append(allPlugins, csi.ProbeVolumePlugins()...)
++	// allPlugins = append(allPlugins, csi.ProbeVolumePlugins()...)
+ 	if featureGate.Enabled(features.ImageVolume) {
+ 		allPlugins = append(allPlugins, image.ProbeVolumePlugins()...)
+ 	}
 diff --git a/pkg/kubelet/volumemanager/volume_manager.go b/pkg/kubelet/volumemanager/volume_manager.go
-index f0c58f3bad1..aca20103254 100644
+index f0c58f3bad1..01af190d988 100644
 --- a/pkg/kubelet/volumemanager/volume_manager.go
 +++ b/pkg/kubelet/volumemanager/volume_manager.go
-@@ -302,7 +302,7 @@ func (vm *volumeManager) Run(ctx context.Context, sourcesReady config.SourcesRea
+@@ -300,10 +300,10 @@ func (vm *volumeManager) Run(ctx context.Context, sourcesReady config.SourcesRea
+ 	logger := klog.FromContext(ctx)
+ 	defer runtime.HandleCrash()
  
- 	if vm.kubeClient != nil {
- 		// start informer for CSIDriver
+-	if vm.kubeClient != nil {
+-		// start informer for CSIDriver
 -		go vm.volumePluginMgr.Run(ctx.Done())
-+		// go vm.volumePluginMgr.Run(ctx.Done())
- 	}
+-	}
++	// if vm.kubeClient != nil {
++	// 	// start informer for CSIDriver
++	// 	go vm.volumePluginMgr.Run(ctx.Done())
++	// }
  
  	go vm.desiredStateOfWorldPopulator.Run(ctx, sourcesReady)
+ 	logger.V(2).Info("The desired_state_of_world populator starts")
