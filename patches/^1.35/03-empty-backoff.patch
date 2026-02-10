@@ -1,9 +1,9 @@
 diff --git a/staging/src/k8s.io/client-go/tools/cache/reflector.go b/staging/src/k8s.io/client-go/tools/cache/reflector.go
-index 6f25f4be9e5..8744858a744 100644
+index a91abd4c813..71cd748739f 100644
 --- a/staging/src/k8s.io/client-go/tools/cache/reflector.go
 +++ b/staging/src/k8s.io/client-go/tools/cache/reflector.go
-@@ -63,6 +63,9 @@ var (
- 	defaultBackoffReset    = 2 * time.Minute
+@@ -67,6 +67,9 @@ var (
+ 	defaultBackoffReset  = 2 * time.Minute
  	defaultBackoffFactor   = 2.0
  	defaultBackoffJitter   = 1.0
 +	// backoffOnEmpty triggers backoff when a watch closes with no events received.
@@ -12,7 +12,7 @@ index 6f25f4be9e5..8744858a744 100644
  )
  
  func init() {
-@@ -101,6 +104,11 @@ func init() {
+@@ -105,6 +108,11 @@ func init() {
  			defaultBackoffJitter = f
  		}
  	}
@@ -24,7 +24,7 @@ index 6f25f4be9e5..8744858a744 100644
  }
  
  // ReflectorStore is the subset of cache.Store that the reflector uses
-@@ -675,6 +683,14 @@ func (r *Reflector) watch(ctx context.Context, w watch.Interface, resyncerrc cha
+@@ -648,6 +656,14 @@ func (r *Reflector) watch(ctx context.Context, w watch.Interface, resyncerrc cha
  					case <-r.clock.After(r.delayHandler()):
  						continue
  					}
@@ -39,7 +39,7 @@ index 6f25f4be9e5..8744858a744 100644
  				case apierrors.IsInternalError(err) && retry.ShouldRetry():
  					logger.V(2).Info("Retrying watch after internal error", "reflector", r.name, "type", r.typeDescription, "err", err)
  					continue
-@@ -1099,6 +1115,9 @@ loop:
+@@ -1066,6 +1082,9 @@ loop:
  		return watchListBookmarkReceived, &VeryShortWatchError{Name: name}
  	}
  	klog.FromContext(ctx).V(4).Info("Watch close", "reflector", name, "type", expectedTypeName, "totalItems", eventCount)
@@ -49,7 +49,7 @@ index 6f25f4be9e5..8744858a744 100644
  	return watchListBookmarkReceived, nil
  }
  
-@@ -1312,6 +1331,23 @@ func (e *VeryShortWatchError) Error() string {
+@@ -1279,6 +1298,23 @@ func (e *VeryShortWatchError) Error() string {
  		"watch lasted less than a second and no items received", e.Name)
  }
  
