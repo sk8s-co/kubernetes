@@ -148,9 +148,9 @@ The only unsafe code path (`kuberuntime_container.go:182`) is behind the `Runtim
 **Versions:** `^1.35` (>=1.35.0 <2.0.0)
 
 **Changes:**
-- Uses `KubeletConfiguration.SyncFrequency` for Node and Service informer resync periods instead of hardcoded `0`
+- Uses `KubeletConfiguration.SyncFrequency` for Pod, Node, and Service reflector/informer resync periods instead of hardcoded `0`
 
-**Why:** By default, kubelet creates Node and Service informers with `resyncPeriod = 0` (never resync). This means informers rely solely on watch events and only re-list on watch reconnection. While this reduces API server load, it also means there's no periodic consistency check.
+**Why:** By default, kubelet creates reflectors/informers with `resyncPeriod = 0` (never resync). This means they rely solely on watch events and only re-list on watch reconnection. While this reduces API server load, it also means there's no periodic consistency check.
 
 This patch uses the existing `SyncFrequency` config option (default: 1 minute) as the resync period, allowing operators to tune this behavior. Setting a longer `SyncFrequency` reduces API calls, while the default provides periodic consistency checks.
 
@@ -159,16 +159,19 @@ This patch uses the existing `SyncFrequency` config option (default: 1 minute) a
 # kubelet-config.yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
-syncFrequency: 5m  # Node/Service informers resync every 5 minutes
+syncFrequency: 5m  # Pod/Node/Service reflectors resync every 5 minutes
 ```
 
-**Affected Informers:**
-| Informer | Location | Before | After |
-|----------|----------|--------|-------|
+**Affected Reflectors/Informers:**
+| Reflector | Location | Before | After |
+|-----------|----------|--------|-------|
+| Pod | `config/apiserver.go:66` | `0` (never) | `SyncFrequency` |
 | Node | `kubelet.go:473` | `0` (never) | `SyncFrequency` |
 | Service | `kubelet.go:539` | `0` (never) | `SyncFrequency` |
 
-**File:** `pkg/kubelet/kubelet.go`
+**Files:**
+- `pkg/kubelet/kubelet.go`
+- `pkg/kubelet/config/apiserver.go`
 
 ## 02-watch-env.patch
 

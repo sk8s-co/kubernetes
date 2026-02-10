@@ -1,7 +1,52 @@
+diff --git a/pkg/kubelet/config/apiserver.go b/pkg/kubelet/config/apiserver.go
+index 60c040299c4..5d5f87d4175 100644
+--- a/pkg/kubelet/config/apiserver.go
++++ b/pkg/kubelet/config/apiserver.go
+@@ -34,7 +34,7 @@ import (
+ const WaitForAPIServerSyncPeriod = 1 * time.Second
+ 
+ // NewSourceApiserver creates a config source that watches and pulls from the apiserver.
+-func NewSourceApiserver(logger klog.Logger, c clientset.Interface, nodeName types.NodeName, nodeHasSynced func() bool, updates chan<- interface{}) {
++func NewSourceApiserver(logger klog.Logger, c clientset.Interface, nodeName types.NodeName, nodeHasSynced func() bool, updates chan<- interface{}, resyncPeriod time.Duration) {
+ 	lw := cache.NewListWatchFromClient(c.CoreV1().RESTClient(), "pods", metav1.NamespaceAll, fields.OneTermEqualSelector("spec.nodeName", string(nodeName)))
+ 
+ 	// The Reflector responsible for watching pods at the apiserver should be run only after
+@@ -50,12 +50,12 @@ func NewSourceApiserver(logger klog.Logger, c clientset.Interface, nodeName type
+ 			logger.V(4).Info("node sync has not completed yet")
+ 		}
+ 		logger.Info("Watching apiserver")
+-		newSourceApiserverFromLW(lw, updates)
++		newSourceApiserverFromLW(lw, updates, resyncPeriod)
+ 	}()
+ }
+ 
+ // newSourceApiserverFromLW holds creates a config source that watches and pulls from the apiserver.
+-func newSourceApiserverFromLW(lw cache.ListerWatcher, updates chan<- interface{}) {
++func newSourceApiserverFromLW(lw cache.ListerWatcher, updates chan<- interface{}, resyncPeriod time.Duration) {
+ 	send := func(objs []interface{}) {
+ 		var pods []*v1.Pod
+ 		for _, o := range objs {
+@@ -63,6 +63,6 @@ func newSourceApiserverFromLW(lw cache.ListerWatcher, updates chan<- interface{}
+ 		}
+ 		updates <- kubetypes.PodUpdate{Pods: pods, Op: kubetypes.SET, Source: kubetypes.ApiserverSource}
+ 	}
+-	r := cache.NewReflector(lw, &v1.Pod{}, cache.NewUndeltaStore(send, cache.MetaNamespaceKeyFunc), 0)
++	r := cache.NewReflector(lw, &v1.Pod{}, cache.NewUndeltaStore(send, cache.MetaNamespaceKeyFunc), resyncPeriod)
+ 	go r.Run(wait.NeverStop)
+ }
 diff --git a/pkg/kubelet/kubelet.go b/pkg/kubelet/kubelet.go
-index b8b7cfd84e9..1b97a7d98d0 100644
+index b8b7cfd84e9..176b0937866 100644
 --- a/pkg/kubelet/kubelet.go
 +++ b/pkg/kubelet/kubelet.go
+@@ -392,7 +392,7 @@ func makePodSourceConfig(kubeCfg *kubeletconfiginternal.KubeletConfiguration, ku
+ 
+ 	if kubeDeps.KubeClient != nil {
+ 		klog.InfoS("Adding apiserver pod source")
+-		config.NewSourceApiserver(logger, kubeDeps.KubeClient, nodeName, nodeHasSynced, cfg.Channel(ctx, kubetypes.ApiserverSource))
++		config.NewSourceApiserver(logger, kubeDeps.KubeClient, nodeName, nodeHasSynced, cfg.Channel(ctx, kubetypes.ApiserverSource), kubeCfg.SyncFrequency.Duration)
+ 	}
+ 	return cfg, nil
+ }
 @@ -470,7 +470,7 @@ func NewMainKubelet(ctx context.Context,
  	// If kubeClient == nil, we are running in standalone mode (i.e. no API servers)
  	// If not nil, we are running as part of a cluster and should sync w/API
