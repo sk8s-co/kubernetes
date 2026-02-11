@@ -1,5 +1,5 @@
 diff --git a/staging/src/k8s.io/client-go/tools/cache/reflector.go b/staging/src/k8s.io/client-go/tools/cache/reflector.go
-index 0cc1eb54431..6f25f4be9e5 100644
+index f1c037feb26..e69da19b288 100644
 --- a/staging/src/k8s.io/client-go/tools/cache/reflector.go
 +++ b/staging/src/k8s.io/client-go/tools/cache/reflector.go
 @@ -23,7 +23,9 @@ import (
@@ -12,8 +12,8 @@ index 0cc1eb54431..6f25f4be9e5 100644
  	"strings"
  	"sync"
  	"time"
-@@ -63,6 +65,44 @@ var (
- 	defaultBackoffJitter   = 1.0
+@@ -67,6 +69,44 @@ var (
+ 	defaultBackoffJitter = 1.0
  )
  
 +func init() {

@@ -1,11 +1,11 @@
 diff --git a/staging/src/k8s.io/client-go/tools/cache/reflector.go b/staging/src/k8s.io/client-go/tools/cache/reflector.go
-index a91abd4c813..71cd748739f 100644
+index e69da19b288..6a82b3fe821 100644
 --- a/staging/src/k8s.io/client-go/tools/cache/reflector.go
 +++ b/staging/src/k8s.io/client-go/tools/cache/reflector.go
 @@ -67,6 +67,9 @@ var (
  	defaultBackoffReset  = 2 * time.Minute
- 	defaultBackoffFactor   = 2.0
- 	defaultBackoffJitter   = 1.0
+ 	defaultBackoffFactor = 2.0
+ 	defaultBackoffJitter = 1.0
 +	// backoffOnEmpty triggers backoff when a watch closes with no events received.
 +	// Disabled by default since empty watches are normal for idle resources.
 +	backoffOnEmpty = false
@@ -24,7 +24,7 @@ index a91abd4c813..71cd748739f 100644
  }
  
  // ReflectorStore is the subset of cache.Store that the reflector uses
-@@ -648,6 +656,14 @@ func (r *Reflector) watch(ctx context.Context, w watch.Interface, resyncerrc cha
+@@ -659,6 +667,14 @@ func (r *Reflector) watch(ctx context.Context, w watch.Interface, resyncerrc cha
  					case <-r.clock.After(r.delayHandler()):
  						continue
  					}
@@ -39,7 +39,7 @@ index a91abd4c813..71cd748739f 100644
  				case apierrors.IsInternalError(err) && retry.ShouldRetry():
  					logger.V(2).Info("Retrying watch after internal error", "reflector", r.name, "type", r.typeDescription, "err", err)
  					continue
-@@ -1066,6 +1082,9 @@ loop:
+@@ -1077,6 +1093,9 @@ loop:
  		return watchListBookmarkReceived, &VeryShortWatchError{Name: name}
  	}
  	klog.FromContext(ctx).V(4).Info("Watch close", "reflector", name, "type", expectedTypeName, "totalItems", eventCount)
@@ -49,7 +49,7 @@ index a91abd4c813..71cd748739f 100644
  	return watchListBookmarkReceived, nil
  }
  
-@@ -1279,6 +1298,23 @@ func (e *VeryShortWatchError) Error() string {
+@@ -1290,6 +1309,23 @@ func (e *VeryShortWatchError) Error() string {
  		"watch lasted less than a second and no items received", e.Name)
  }
  
