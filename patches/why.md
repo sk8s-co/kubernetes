@@ -69,6 +69,28 @@ This patch implements client sharing using the same reference-counting pattern a
 
 **File:** `staging/src/k8s.io/apiserver/pkg/storage/storagebackend/factory/etcd3.go`
 
+## 01-kubelet-fast-status-interval.patch
+
+**Versions:** `^1.35` (>=1.35.0 <2.0.0)
+
+**Changes:**
+- Increases the `fastStatusUpdateOnce` polling interval from 100ms to 5s
+
+**Why:** During kubelet startup, `fastStatusUpdateOnce` runs in a tight loop (every 100ms) trying to update node status as soon as the node is ready. Before the node is registered and synced to the local cache, this produces repeated error logs:
+
+```
+E0213 11:44:40.281084 kubelet_node_status.go:392] "Error getting the current node from lister" err="node \"node-name\" not found"
+```
+
+In serverless environments where sub-second node ready latency isn't critical, this aggressive polling is unnecessary. Increasing the interval to 5s reduces log noise and startup overhead at the cost of up to ~5s additional latency before the node reports Ready.
+
+**Trade-offs:**
+- ✅ Reduces "node not found" error log spam during startup
+- ✅ Slightly less CPU churn during startup window
+- ❌ Node may take up to ~5s longer to report Ready after actually becoming ready
+
+**File:** `pkg/kubelet/kubelet.go`
+
 ## 01-kubelet-external-dns.patch
 
 **Versions:** `^1.35` (>=1.35.0 <2.0.0)

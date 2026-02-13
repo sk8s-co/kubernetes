@@ -1,0 +1,12 @@
+diff --git a/pkg/kubelet/kubelet.go b/pkg/kubelet/kubelet.go
+index b8b7cfd84e9..a1b2c3d4e5f 100644
+--- a/pkg/kubelet/kubelet.go
++++ b/pkg/kubelet/kubelet.go
+@@ -3235,6 +3235,6 @@ func (kl *Kubelet) fastStatusUpdateOnce() {
+ 		if kl.fastNodeStatusUpdate(ctx, kl.clock.Since(start) >= nodeReadyGracePeriod) {
+ 			close(stopCh)
+ 		}
+-	}, 100*time.Millisecond, stopCh)
++	}, 5*time.Second, stopCh)
+ }
+
