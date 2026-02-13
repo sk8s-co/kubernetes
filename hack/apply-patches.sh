@@ -162,9 +162,18 @@ apply_remote() {
                 done < "$patch_file"
                 if [ -s "$output_file" ]; then
                     echo "Applying direct patch: $output_file"
-                    # Use --3way to handle context differences between versions
-                    # This allows PR patches from master to apply to older releases
-                    git apply --3way --verbose "$output_file"
+                    # Try methods in order of preference:
+                    # 1. --3way (best, but needs git history)
+                    # 2. regular git apply (needs exact context)
+                    # 3. patch with fuzz (most lenient, for shallow clones)
+                    if git apply --3way --verbose "$output_file" 2>/dev/null; then
+                        echo "Applied with 3-way merge"
+                    elif git apply --verbose "$output_file" 2>/dev/null; then
+                        echo "Applied with git apply"
+                    else
+                        echo "Git apply failed, trying patch with fuzz..."
+                        patch -p1 --fuzz=3 < "$output_file"
+                    fi
                 fi
             done
         done
