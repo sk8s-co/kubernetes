@@ -199,7 +199,7 @@ syncFrequency: 5m  # Pod/Node/Service reflectors resync every 5 minutes
 
 **Versions:** `^1.35` (>=1.35.0 <2.0.0)
 
-**Depends on:** `00-cnuss-kubernetes` (remote patch)
+**Depends on:** `00-pr-136824` (remote patch)
 
 **Changes:**
 - Adds environment variable configuration for watch/backoff parameters in the client-go reflector
@@ -234,7 +234,7 @@ export WATCH_MAX_TIMEOUT="20m"
 
 **Versions:** `^1.35` (>=1.35.0 <2.0.0)
 
-**Depends on:** `00-cnuss-kubernetes` (remote patch), `02-watch-env.patch`
+**Depends on:** `00-pr-136824` (remote patch), `02-watch-env.patch`
 
 **Changes:**
 - Adds optional backoff when a watch closes with zero events received

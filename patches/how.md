@@ -15,7 +15,7 @@ patches/
 
 remote-patches/
   ^1.35/                        # Remote patch definitions
-    00-cnuss-kubernetes         # References fork branches (fetched at build time)
+    00-pr-136824                # References PRs/commits (fetched at build time)
 
 kubernetes/                     # Git submodule - scratchpad for patch development
 
@@ -96,29 +96,41 @@ git reset --hard v1.35.0
 
 ## Remote Patches
 
-Remote patches reference GitHub fork branches. They're fetched at build time.
+Remote patches reference GitHub PRs, commits, or fork branches. They're fetched at build time.
 
 ### Format
 
 Files in `remote-patches/<range>/` contain one reference per line:
 
 ```
-# Format: owner:branch
-# Fetches: github.com/kubernetes/kubernetes/compare/master...owner:kubernetes:branch.diff
+# Supported formats:
+#   pr:NUMBER      -> fetch PR patch (works for merged PRs)
+#   commit:SHA     -> fetch specific commit patch
+#   owner:branch   -> compare master...owner:kubernetes:branch (unmerged PRs only)
 
+pr:136824
+commit:abc123def
 cnuss:issues/136823
 ```
 
-### When to use
+### Which format to use
 
-- Vetted changes targeting upstream that haven't merged yet
-- Your own fork branches with upstream-quality changes
+| Format | Use case | Notes |
+|--------|----------|-------|
+| `pr:NUMBER` | Merged PRs | Preferred for merged changes; applies with 3-way merge |
+| `commit:SHA` | Specific commits | When you need exact commit(s), not full PR |
+| `owner:branch` | Unmerged PRs | Diff against master; requires cherry-pick workflow |
 
 ### Converting to local
 
 Snapshot a remote patch to local:
 ```bash
-curl -sL "https://github.com/kubernetes/kubernetes/compare/master...owner:kubernetes:branch.diff" \
+# From PR
+curl -sL "https://github.com/kubernetes/kubernetes/pull/136824.patch" \
+  > patches/^1.35/02-feature.patch
+
+# From commit
+curl -sL "https://github.com/kubernetes/kubernetes/commit/abc123.patch" \
   > patches/^1.35/02-feature.patch
 ```
 

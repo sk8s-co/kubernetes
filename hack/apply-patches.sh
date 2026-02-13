@@ -15,72 +15,161 @@ REMOTE_PATCHES_DIR="${REMOTE_PATCHES_DIR:-$SCRIPT_DIR/remote-patches}"
 # Fetched remote patches go to a cache dir (not tracked in git)
 REMOTE_CACHE_DIR="${REMOTE_CACHE_DIR:-$SCRIPT_DIR/.cache/patches}"
 
+# For local dev: if kubernetes submodule exists, cd into it
+# In Docker: we're already in /kubernetes (WORKDIR)
+if [ -e "$SCRIPT_DIR/kubernetes/.git" ]; then
+    echo "Changing to kubernetes submodule directory"
+    cd "$SCRIPT_DIR/kubernetes"
+fi
+
+# Fetch a URL using wget or curl
+fetch_url() {
+    local url="$1"
+    local output="$2"
+    if command -v wget >/dev/null 2>&1; then
+        wget -q -O - "$url" >> "$output" || (echo "Failed to fetch $url" && return 1)
+    else
+        curl -sL "$url" >> "$output" || (echo "Failed to fetch $url" && return 1)
+    fi
+}
+
+# Parse a remote patch line and return the URL
+# Supported formats:
+#   owner:branch      -> compare master...owner:kubernetes:branch (unmerged PRs)
+#   pr:NUMBER         -> PR patch (works for merged PRs)
+#   commit:SHA        -> specific commit patch
+get_patch_url() {
+    local line="$1"
+    local type=$(echo "$line" | cut -d':' -f1)
+    local value=$(echo "$line" | cut -d':' -f2-)
+
+    case "$type" in
+        pr)
+            echo "https://github.com/kubernetes/kubernetes/pull/${value}.patch"
+            ;;
+        commit)
+            echo "https://github.com/kubernetes/kubernetes/commit/${value}.patch"
+            ;;
+        *)
+            # Default: owner:branch format
+            echo "https://github.com/kubernetes/kubernetes/compare/master...${type}:kubernetes:${value}.diff"
+            ;;
+    esac
+}
+
+# Check if a line uses direct patch format (pr: or commit:) vs branch diff
+is_direct_patch() {
+    local line="$1"
+    local type=$(echo "$line" | cut -d':' -f1)
+    case "$type" in
+        pr|commit) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 apply_remote() {
     echo "=== Applying remote patches ==="
-
-    # Remote patches are diffs against master, so we need to:
-    # 1. Save current ref (e.g., v1.35.0)
-    # 2. Checkout master and apply patches there
-    # 3. Cherry-pick changes back to original ref
-
-    original_ref=$(git rev-parse HEAD)
-
-    # Fetch and checkout master
-    echo "Fetching master for remote patch application..."
-    git fetch origin master --depth=1
-    git checkout FETCH_HEAD
 
     # Configure git for commits
     git config user.email "build@localhost"
     git config user.name "Build"
 
-    # Apply remote patches on master
+    original_ref=$(git rev-parse HEAD)
+    has_branch_patches=false
+    has_direct_patches=false
+
+    # First pass: categorize patches
     for range_dir in "$REMOTE_PATCHES_DIR"/*/; do
         [ -d "$range_dir" ] || continue
-        range=$(basename "$range_dir")
-        mkdir -p "$REMOTE_CACHE_DIR/$range"
         for patch_file in "$range_dir"*; do
             [ -f "$patch_file" ] || continue
-            patch_name=$(basename "$patch_file")
-            output_file="$REMOTE_CACHE_DIR/$range/$patch_name.patch"
-            # Clear existing fetched patch
-            > "$output_file"
             while IFS= read -r line || [ -n "$line" ]; do
                 line=$(echo "$line" | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')
                 [ -z "$line" ] && continue
-                owner=$(echo "$line" | cut -d':' -f1)
-                branch=$(echo "$line" | cut -d':' -f2-)
-                diff_url="https://github.com/kubernetes/kubernetes/compare/master...${owner}:kubernetes:${branch}.diff"
-                echo "Fetching: $diff_url"
-                if command -v wget >/dev/null 2>&1; then
-                    wget -q -O - "$diff_url" >> "$output_file" || \
-                        (echo "Failed to fetch $diff_url" && exit 1)
+                if is_direct_patch "$line"; then
+                    has_direct_patches=true
                 else
-                    curl -sL "$diff_url" >> "$output_file" || \
-                        (echo "Failed to fetch $diff_url" && exit 1)
+                    has_branch_patches=true
                 fi
             done < "$patch_file"
-            echo "Applying remote patch on master: $output_file"
-            git apply --verbose --check "$output_file"
-            git apply --verbose "$output_file"
         done
     done
 
-    # Commit remote patches on master
-    git add -A
-    if git diff --cached --quiet; then
-        echo "No remote patches to apply"
-        git checkout "$original_ref"
-        return
-    fi
-    git commit -m "Remote patches"
-    remote_commit=$(git rev-parse HEAD)
+    # Apply branch-based patches (need master checkout + cherry-pick)
+    if [ "$has_branch_patches" = true ]; then
+        echo "--- Applying branch-based patches via cherry-pick ---"
+        git fetch origin master --depth=1
+        git checkout FETCH_HEAD
 
-    # Switch back to original ref and cherry-pick
-    echo "Cherry-picking remote patches to original ref..."
-    git checkout "$original_ref"
-    git cherry-pick --no-commit "$remote_commit"
-    echo "Remote patches applied successfully"
+        for range_dir in "$REMOTE_PATCHES_DIR"/*/; do
+            [ -d "$range_dir" ] || continue
+            range=$(basename "$range_dir")
+            mkdir -p "$REMOTE_CACHE_DIR/$range"
+            for patch_file in "$range_dir"*; do
+                [ -f "$patch_file" ] || continue
+                patch_name=$(basename "$patch_file")
+                output_file="$REMOTE_CACHE_DIR/$range/${patch_name}-branch.patch"
+                > "$output_file"
+                while IFS= read -r line || [ -n "$line" ]; do
+                    line=$(echo "$line" | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')
+                    [ -z "$line" ] && continue
+                    is_direct_patch "$line" && continue
+                    url=$(get_patch_url "$line")
+                    echo "Fetching branch patch: $url"
+                    fetch_url "$url" "$output_file"
+                done < "$patch_file"
+                if [ -s "$output_file" ]; then
+                    echo "Applying branch patch on master: $output_file"
+                    git apply --verbose --check "$output_file"
+                    git apply --verbose "$output_file"
+                fi
+            done
+        done
+
+        git add -A
+        if ! git diff --cached --quiet; then
+            git commit -m "Remote branch patches"
+            remote_commit=$(git rev-parse HEAD)
+            git checkout "$original_ref"
+            git cherry-pick --no-commit "$remote_commit"
+            echo "Branch patches cherry-picked successfully"
+        else
+            echo "No branch patches to apply"
+            git checkout "$original_ref"
+        fi
+    fi
+
+    # Apply direct patches (pr: and commit:) - apply directly to current ref
+    # These are self-contained patches that don't require fetching master
+    if [ "$has_direct_patches" = true ]; then
+        echo "--- Applying direct patches (PR/commit) ---"
+        for range_dir in "$REMOTE_PATCHES_DIR"/*/; do
+            [ -d "$range_dir" ] || continue
+            range=$(basename "$range_dir")
+            mkdir -p "$REMOTE_CACHE_DIR/$range"
+            for patch_file in "$range_dir"*; do
+                [ -f "$patch_file" ] || continue
+                patch_name=$(basename "$patch_file")
+                output_file="$REMOTE_CACHE_DIR/$range/${patch_name}-direct.patch"
+                > "$output_file"
+                while IFS= read -r line || [ -n "$line" ]; do
+                    line=$(echo "$line" | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')
+                    [ -z "$line" ] && continue
+                    is_direct_patch "$line" || continue
+                    url=$(get_patch_url "$line")
+                    echo "Fetching direct patch: $url"
+                    fetch_url "$url" "$output_file"
+                done < "$patch_file"
+                if [ -s "$output_file" ]; then
+                    echo "Applying direct patch: $output_file"
+                    # Use --3way to handle context differences between versions
+                    # This allows PR patches from master to apply to older releases
+                    git apply --3way --verbose "$output_file"
+                fi
+            done
+        done
+        echo "Direct patches applied successfully"
+    fi
 }
 
 apply_local() {

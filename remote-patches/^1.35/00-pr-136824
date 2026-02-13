@@ -1,0 +1,6 @@
+# Supported formats:
+#   owner:branch  -> compare master...owner:kubernetes:branch (unmerged PRs)
+#   pr:NUMBER     -> fetch PR patch directly (works for merged PRs)
+#   commit:SHA    -> fetch specific commit patch
+
+pr:136824
